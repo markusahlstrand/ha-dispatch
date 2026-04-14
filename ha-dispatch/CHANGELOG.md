@@ -1,5 +1,28 @@
 # Changelog
 
+## 0.1.23 — 2026-04-14
+
+- Device registry access + HA ↔ Shelly bridge. "Shellys in the laundry?"
+  is now a one-tool question.
+- New `src/ha/device-registry.ts` — renders a Jinja template that
+  enumerates every entity with its device_id, device_name,
+  manufacturer, model, area_id, area_name, and configuration_url, then
+  groups by device_id. HA's device/area registries are WebSocket-only
+  over REST otherwise, so the template endpoint is our backdoor.
+- HAClient gains `renderTemplate(template)` (POST /api/template).
+- New `list_devices` tool (src/tools/device-tools.ts) with filters for
+  area, manufacturer, model, entity_substring. Returns grouped devices
+  with entity counts and the configuration_url where HA has one.
+- New `shelly_import_from_ha({area?, auto_register?, password?})` tool.
+  For most users, every Shelly they own is already integrated into HA
+  — this tool pulls them out of the device registry, extracts the IP
+  from configuration_url, and (when auto_register is true) probes and
+  registers each one with Dispatch in one call. The agent no longer
+  has to ask for IPs manually.
+- Chat system prompt reorganised: use list_devices for room/device
+  questions; call shelly_import_from_ha FIRST before falling back to
+  shelly_add with a manual IP.
+
 ## 0.1.22 — 2026-04-14
 
 - Shelly adapter (Phase 1). Dispatch can now talk to Shelly Gen2+

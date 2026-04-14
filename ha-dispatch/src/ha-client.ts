@@ -143,6 +143,24 @@ export class HAClient {
   }
 
   /**
+   * Render a Jinja2 template using HA's /api/template endpoint.
+   * This is our backdoor into HA's device/area registries, which are
+   * otherwise WebSocket-only. Returns the rendered string — the caller
+   * decides whether to JSON.parse it.
+   */
+  async renderTemplate(template: string): Promise<string> {
+    const res = await this.fetch('/api/template', {
+      method: 'POST',
+      body: JSON.stringify({ template }),
+    })
+    if (!res.ok) {
+      const text = await res.text().catch(() => '')
+      throw new Error(`renderTemplate failed: HTTP ${res.status} ${text.slice(0, 200)}`)
+    }
+    return res.text()
+  }
+
+  /**
    * POST a state to HA — creates the entity on first call and updates it
    * thereafter. Used by the entity publisher to expose flow state as
    * first-class HA sensors / binary_sensors.

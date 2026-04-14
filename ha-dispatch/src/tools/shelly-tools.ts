@@ -16,6 +16,7 @@ import type { Tool } from './types.js'
 import type { AppStore } from '../store.js'
 import type { KnownShelly } from '../adapters/shelly/types.js'
 import { createShellyClient } from '../adapters/shelly/client.js'
+import { listDevices, filterDevices, extractAddress } from '../ha/device-registry.js'
 import {
   scriptTemplates,
   type ScriptTemplateId,
@@ -296,9 +297,110 @@ export const shellyRemoveScriptTool: Tool<
   },
 }
 
+export const shellyImportFromHATool: Tool<
+  { area?: string; auto_register?: boolean; password?: string },
+  unknown
+> = {
+  spec: {
+    name: 'shelly_import_from_ha',
+    description:
+      'Find Shelly devices that Home Assistant already knows about and (optionally) register them with Dispatch so the shelly_* tools can reach them directly over the LAN. Use this FIRST when the user asks about "shellys in the <room>" — most Shelly owners integrate them into HA, and this tool returns the list grouped by device with the IP extracted from HA\'s device registry, so you don\'t need to ask for IPs. Set auto_register=true to store them immediately; otherwise return the list and ask the user to confirm.',
+    parameters: {
+      type: 'object',
+      properties: {
+        area: {
+          type: 'string',
+          description: 'Optional area filter (substring match on area_name).',
+        },
+        auto_register: {
+          type: 'boolean',
+          description: 'If true, persist each discovered Shelly via shelly_add (recommended once the user confirms). Default false.',
+        },
+        password: {
+          type: 'string',
+          description: 'Optional common password to apply to all imported devices.',
+        },
+      },
+    },
+  },
+  async execute({ ha, store }, args) {
+    const all = await listDevices(ha)
+    const shellys = filterDevices(all, {
+      area: args.area,
+      manufacturer: 'Shelly',
+    })
+
+    const results: unknown[] = []
+    for (const d of shellys) {
+      const address = extractAddress(d.configuration_url)
+      if (!address) {
+        results.push({
+          device_id: d.id,
+          name: d.name,
+          area: d.area_name,
+          model: d.model,
+          registered: false,
+          note: 'No configuration_url in HA registry — ask user for the IP and call shelly_add manually.',
+        })
+        continue
+      }
+      if (args.auto_register) {
+        // Best-effort probe — if the device is offline or auth fails we
+        // still return useful info to the LLM.
+        try {
+          const client = createShellyClient({ address, password: args.password })
+          const info = await client.info()
+          const record: KnownShelly = {
+            id: info.id,
+            name: d.name ?? info.name ?? info.id,
+            address,
+            password: args.password,
+            lastSeen: Date.now(),
+          }
+          await saveKnown(store, record)
+          results.push({
+            device_id: d.id,
+            shelly_id: info.id,
+            name: record.name,
+            address,
+            area: d.area_name,
+            model: info.model,
+            firmware: info.ver,
+            auth_required: info.auth_en,
+            registered: true,
+          })
+        } catch (e) {
+          results.push({
+            device_id: d.id,
+            name: d.name,
+            area: d.area_name,
+            model: d.model,
+            address,
+            registered: false,
+            error: (e as Error).message,
+          })
+        }
+      } else {
+        results.push({
+          device_id: d.id,
+          name: d.name,
+          area: d.area_name,
+          model: d.model,
+          address,
+          entity_count: d.entity_ids.length,
+          entity_ids: d.entity_ids.slice(0, 10),
+          registered: false,
+        })
+      }
+    }
+    return { count: results.length, devices: results }
+  },
+}
+
 export const shellyTools = [
   shellyAddTool,
   shellyListTool,
+  shellyImportFromHATool,
   shellyInfoTool,
   shellyStatusTool,
   shellyCallTool,

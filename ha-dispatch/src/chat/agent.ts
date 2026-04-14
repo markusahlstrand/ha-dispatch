@@ -32,6 +32,7 @@ import { createToolkit } from '../tools/types.js'
 import { haTools } from '../tools/ha-tools.js'
 import { automationTools } from '../tools/automation-tools.js'
 import { shellyTools } from '../tools/shelly-tools.js'
+import { deviceTools } from '../tools/device-tools.js'
 import { buildHAContext } from '../memory/prompt.js'
 
 const HISTORY_KEY = 'chat:history'
@@ -237,7 +238,7 @@ async function handleFreeForm(deps: AgentDeps, persona: Persona, userText: strin
     )
   }
 
-  const toolkit = createToolkit([...haTools, ...automationTools, ...shellyTools])
+  const toolkit = createToolkit([...haTools, ...deviceTools, ...automationTools, ...shellyTools])
   const inventory = await timedInventory(deps).catch(() => null)
   const inventoryHint = inventory
     ? `Highlights: ${inventory.highlights.join('; ')}. ${inventory.totalEntities} entities total.`
@@ -270,7 +271,11 @@ When you discover something the user or future turns should remember — an enti
 
 Keep user-facing responses short and concrete; quote the specific entity ids you acted on.
 
-You can also reach Shelly Gen2+ devices directly over the LAN (bypassing HA) via the shelly_* tools: shelly_add to register a device by IP, shelly_info / shelly_status / shelly_call for state and control, and shelly_install_script / shelly_list_scripts / shelly_remove_script to deploy mJS scripts on the device. Use this when the user wants behavior running on the Shelly itself — e.g. "send a webhook when power spikes above X" — where an HA automation would be slower or less reliable. Prefer bundled templates (power_threshold_webhook, cycle_finish_webhook) over writing raw mJS. Name Dispatch-managed scripts with a "dispatch_" prefix. If you don't have the device's IP in shelly_list, ask the user for it once and call shelly_add.
+When the user asks about devices in a room ("shellys in the laundry?", "what climate devices upstairs?"), use list_devices (optionally filtered by area / manufacturer / model) instead of reconstructing it from list_states. list_devices returns the HA device registry grouped: one entry per physical device, with manufacturer / model / area / entities / configuration_url. Prefer this over list_states for device-level questions.
+
+When the user mentions Shellys, check if HA already knows about them via shelly_import_from_ha({area}) FIRST. Most Shelly owners integrate them into HA, and that tool returns the list with IPs already extracted from the HA device registry — no need to ask the user for IPs. Only fall back to shelly_add with a manual IP if the device isn't in HA yet.
+
+You can also reach Shelly Gen2+ devices directly over the LAN (bypassing HA) via the shelly_* tools: shelly_info / shelly_status / shelly_call for state and control, and shelly_install_script / shelly_list_scripts / shelly_remove_script to deploy mJS scripts on the device. Use this when the user wants behavior running on the Shelly itself — e.g. "send a webhook when power spikes above X" — where an HA automation would be slower or less reliable. Prefer bundled templates (power_threshold_webhook, cycle_finish_webhook) over writing raw mJS. Name Dispatch-managed scripts with a "dispatch_" prefix.
 
 About the user's setup: ${inventoryHint}`
 
