@@ -1,5 +1,27 @@
 # Changelog
 
+## 0.1.17 — 2026-04-14
+
+- Diagnostics module. Captures key events (LLM calls with provider /
+  model / latency / ok flag, inventory builds, flow runs, errors,
+  user-submitted notes) to a rotating KV buffer (last 250). New
+  `src/diagnostics/` with a recorder + report bundler. Secrets are
+  redacted before persistence.
+- New endpoints under `/api/diagnostics`: GET returns a downloadable
+  report with recent events, persona snapshot (no API keys), inventory
+  summary (counts only), and recent flow runs. POST /note records a
+  user note. DELETE clears.
+- UI: header has a small "⬇ report" button that prompts for an
+  optional note, then downloads `dispatch-report-{ts}.json`. Paste it
+  back to me when something gets stuck and I'll see exactly what
+  happened.
+- Onboarding UX fix: when you submit your name(s), an immediate
+  "Looking around..." bubble appears so the inventory wait isn't
+  silent. Failures show a real message + a hint to use the report
+  button instead of leaving the form spinning.
+- LLM provider exposes a `tag` parameter so each call shows up labeled
+  in the report (e.g. discover.energy-optimizer, chat.freeform).
+
 ## 0.1.16 — 2026-04-14
 
 - Chat is now the default landing. New `src/chat/` module with persona,

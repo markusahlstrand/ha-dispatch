@@ -14,6 +14,9 @@ import { createLocalStorage, type Storage } from './adapters/index.js'
 import { createAppStore, type AppStore } from './store.js'
 import { createFlowsRouter } from './api/flows.js'
 import { createChatRouter } from './api/chat.js'
+import { createDiagnosticsRouter } from './api/diagnostics.js'
+import { createRecorder } from './diagnostics/recorder.js'
+import { setLLMObserver } from './llm/types.js'
 import { listFlows } from './runtime/flow-registry.js'
 import { runFlow } from './runtime/flow-runner.js'
 import { createLLM } from './llm/index.js'
@@ -41,6 +44,10 @@ async function start() {
     config.supervisorToken ?? process.env.HASS_TOKEN ?? '',
   )
 
+  // Diagnostics recorder + LLM observer wired up
+  const recorder = createRecorder(store)
+  setLLMObserver({ onCall: (e) => recorder.record({ type: 'llm_call', ...e }) })
+
   // LLM provider (null when llm_provider=none or no API key)
   const llm = createLLM(config)
   console.log(
@@ -55,6 +62,8 @@ async function start() {
     c.set('store' as never, store)
     c.set('storage' as never, storage)
     c.set('llm' as never, llm)
+    c.set('recorder' as never, recorder)
+    c.set('version' as never, '0.1.17')
     await next()
   })
 
@@ -75,6 +84,9 @@ async function start() {
 
   // Chat router (persona, onboarding, conversational surface)
   app.route('/api/chat', createChatRouter())
+
+  // Diagnostics router (event buffer + downloadable report)
+  app.route('/api/diagnostics', createDiagnosticsRouter())
 
   // LLM-powered flow suggestions (based on the user's entity inventory)
   app.post('/api/suggestions', async (c) => {
@@ -99,7 +111,7 @@ async function start() {
     })
 
   // Minimal scheduler: tick every minute and run flows whose cron matches
-  const scheduler = startScheduler(ha, store, storage, config)
+  const scheduler = startScheduler(ha, store, storage, config, recorder)
 
   // HTTP server
   serve({ fetch: app.fetch, port: config.port }, (info) => {
@@ -129,6 +141,7 @@ function startScheduler(
   store: AppStore,
   storage: Storage,
   config: ReturnType<typeof loadConfig>,
+  recorder: ReturnType<typeof createRecorder>,
 ) {
   const enabled = new Set(config.enabled_flows)
   return setInterval(async () => {
@@ -140,7 +153,7 @@ function startScheduler(
         if (cronMatches(trigger.cron, now)) {
           console.log(`[ha-dispatch] Scheduled run: ${flow.id}`)
           const flowConfig = await store.getFlowConfig(flow.id)
-          runFlow(flow, { ha, store, storage, trigger: 'schedule', config: flowConfig }).catch((e) =>
+          runFlow(flow, { ha, store, storage, trigger: 'schedule', config: flowConfig, recorder }).catch((e) =>
             console.error(`[ha-dispatch] ${flow.id} failed:`, e),
           )
         }

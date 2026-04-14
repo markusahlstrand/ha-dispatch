@@ -1,5 +1,5 @@
 name: HA Dispatch
-version: "0.1.16"
+version: "0.1.17"
 slug: ha_dispatch
 description: Durable, AI-native automation runtime for Home Assistant
 arch:

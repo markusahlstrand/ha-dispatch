@@ -17,12 +17,13 @@ import type { HAClient } from '../ha-client.js'
 import type { AppStore } from '../store.js'
 import type { Storage } from '../adapters/index.js'
 import type { LLMProvider } from '../llm/index.js'
+import type { Recorder } from '../diagnostics/recorder.js'
 import { listFlows, getFlow } from '../runtime/flow-registry.js'
 import { runFlow } from '../runtime/flow-runner.js'
 import { classifyEntities } from '../flows/energy-optimizer/discover.js'
 import { classifyEntitiesLLM } from '../flows/energy-optimizer/classify-llm.js'
 
-type Deps = { ha: HAClient; store: AppStore; storage: Storage; llm: LLMProvider | null }
+type Deps = { ha: HAClient; store: AppStore; storage: Storage; llm: LLMProvider | null; recorder: Recorder | null }
 
 export function createFlowsRouter() {
   const app = new Hono<{ Variables: Deps }>()
@@ -76,7 +77,8 @@ export function createFlowsRouter() {
     const storage = c.get('storage') as Storage
     const config = await store.getFlowConfig(flow.id)
 
-    const result = await runFlow(flow, { ha, store, storage, trigger: 'manual', config })
+    const recorder = (c.get('recorder') as Recorder | null) ?? undefined
+    const result = await runFlow(flow, { ha, store, storage, trigger: 'manual', config, recorder })
     return c.json({ result })
   })
 

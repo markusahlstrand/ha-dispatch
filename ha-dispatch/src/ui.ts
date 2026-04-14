@@ -45,7 +45,8 @@ const HTML = `<!DOCTYPE html>
         <a href="#/flows" id="tab-flows" class="px-3 py-1.5 rounded text-sm font-medium hover:bg-gray-100">Flows</a>
       </nav>
     </div>
-    <div class="flex items-center gap-2">
+    <div class="flex items-center gap-3">
+      <button onclick="downloadReport()" class="text-xs text-gray-400 hover:text-gray-700" title="Download a JSON debug report you can share">⬇ report</button>
       <div id="conn-dot" class="w-2 h-2 rounded-full bg-gray-400 pulse-dot"></div>
       <span id="conn-text" class="text-sm text-gray-500">—</span>
     </div>
@@ -226,16 +227,23 @@ async function submitNames(ev) {
   const userName = form.elements.userName.value.trim();
   const assistantName = form.elements.assistantName.value.trim() || 'Dispatch';
   if (!userName) return;
-  form.querySelector('button').disabled = true;
+  const btn = form.querySelector('button');
+  btn.disabled = true;
+  // Show a placeholder so the user knows we're working
+  appendBubble({ role: 'assistant', content: 'Looking around your Home Assistant... this can take a few seconds on bigger setups.' });
+  const placeholder = document.getElementById('chat-scroll').lastElementChild;
   try {
     const reply = await api('/chat/action', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ type: 'set_names', userName, assistantName }),
     });
+    if (placeholder) placeholder.remove();
     appendBubble(reply.message);
   } catch (e) {
-    alert('Error: ' + e.message);
+    if (placeholder) placeholder.remove();
+    appendBubble({ role: 'assistant', content: 'Hmm, something went wrong while looking around: ' + e.message + '. You can use the ⬇ report button (top right) to grab a debug bundle.' });
+    btn.disabled = false;
   }
 }
 
@@ -243,16 +251,47 @@ async function submitInterests(ev) {
   ev.preventDefault();
   const form = ev.target;
   const ids = [...form.querySelectorAll('input[name="tpl"]:checked')].map(i => i.value);
-  form.querySelector('button[type="submit"]').disabled = true;
+  const btn = form.querySelector('button[type="submit"]');
+  btn.disabled = true;
+  appendBubble({ role: 'assistant', content: 'Thinking about specific ideas for your setup...' });
+  const placeholder = document.getElementById('chat-scroll').lastElementChild;
   try {
     const reply = await api('/chat/action', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ type: 'set_interests', templateIds: ids }),
     });
+    if (placeholder) placeholder.remove();
     appendBubble(reply.message);
   } catch (e) {
-    alert('Error: ' + e.message);
+    if (placeholder) placeholder.remove();
+    appendBubble({ role: 'assistant', content: 'Error: ' + e.message });
+    btn.disabled = false;
+  }
+}
+
+async function downloadReport() {
+  try {
+    const note = prompt('Optional note to include with the report (e.g. "stuck on inventory step")');
+    if (note && note.trim()) {
+      await api('/diagnostics/note', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: note.trim() }),
+      });
+    }
+    const report = await api('/diagnostics');
+    const blob = new Blob([JSON.stringify(report, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'dispatch-report-' + new Date().toISOString().replace(/[:.]/g, '-') + '.json';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  } catch (e) {
+    alert('Could not generate report: ' + e.message);
   }
 }
 

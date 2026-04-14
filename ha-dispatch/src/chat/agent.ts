@@ -22,7 +22,8 @@
 import type { HAClient } from '../ha-client.js'
 import type { AppStore } from '../store.js'
 import type { LLMProvider } from '../llm/index.js'
-import type { Message, Persona } from './types.js'
+import type { Recorder } from '../diagnostics/recorder.js'
+import type { Message, Persona, InventorySummary } from './types.js'
 import { getPersona, patchPersona, defaultPersona, buildSystemPrompt } from './persona.js'
 import { buildInventory } from './inventory.js'
 import { CAPABILITY_TEMPLATES, applicableTemplates } from './templates.js'
@@ -34,6 +35,30 @@ interface AgentDeps {
   ha: HAClient
   store: AppStore
   llm: LLMProvider | null
+  recorder?: Recorder | null
+}
+
+async function timedInventory(deps: AgentDeps): Promise<InventorySummary> {
+  const startedAt = Date.now()
+  try {
+    const inv = await buildInventory(deps.ha)
+    deps.recorder?.record({
+      type: 'inventory',
+      entityCount: inv.totalEntities,
+      durationMs: Date.now() - startedAt,
+      ok: true,
+    })
+    return inv
+  } catch (e) {
+    deps.recorder?.record({
+      type: 'inventory',
+      entityCount: 0,
+      durationMs: Date.now() - startedAt,
+      ok: false,
+      error: (e as Error).message,
+    })
+    throw e
+  }
 }
 
 export interface AgentReply {
@@ -125,11 +150,21 @@ export async function handleStructuredAction(
       assistantName: action.assistantName.trim() || persona.assistantName,
     })
     // Move to inventory stage — show what we see and ask about interests
-    const inventory = await buildInventory(deps.ha)
+    let inventory: InventorySummary
+    try {
+      inventory = await timedInventory(deps)
+    } catch (e) {
+      assistantMsg = makeMessage(
+        'assistant',
+        `Nice to meet you, ${updated.userName}. I tried to look around but couldn't reach Home Assistant: ${(e as Error).message}. Try refreshing once HA is reachable.`,
+      )
+      const history = await appendHistory(deps.store, assistantMsg)
+      return { message: assistantMsg, history }
+    }
     const apt = applicableTemplates(inventory.domains.flatMap((d) => d.examples))
     assistantMsg = makeMessage(
       'assistant',
-      `Nice to meet you, ${updated.userName}. I'll go by ${updated.assistantName} from now on. Let me take a quick look at your Home Assistant...`,
+      `Nice to meet you, ${updated.userName}. I'll go by ${updated.assistantName} from now on. Here's what I can see in your setup — pick the areas you'd like help with.`,
       [
         { kind: 'inventory_summary', data: inventory },
         { kind: 'capability_picker', data: { templates: apt.length > 0 ? apt : CAPABILITY_TEMPLATES } },
@@ -190,7 +225,7 @@ async function handleFreeForm(deps: AgentDeps, persona: Persona, userText: strin
   }
 
   // Tight context: a slim inventory summary + recent chat history.
-  const inventory = await buildInventory(deps.ha)
+  const inventory = await timedInventory(deps)
   const inventorySummary = inventory.highlights.join('. ') + '.'
   const history = await loadHistory(deps.store)
 
@@ -229,7 +264,7 @@ async function suggestForInterests(
   }
 
   // With an LLM, ask it to tailor 4–6 ideas to the actual entities.
-  const inventory = await buildInventory(deps.ha)
+  const inventory = await timedInventory(deps)
   try {
     const out = await deps.llm.generateJson<{ ideas: string[] }>({
       system: buildSystemPrompt(persona),

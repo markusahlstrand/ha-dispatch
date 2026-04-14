@@ -14,6 +14,7 @@ import type { Flow, FlowContext, FlowResult } from './types.js'
 import type { HAClient } from '../ha-client.js'
 import type { AppStore } from '../store.js'
 import type { Storage } from '../adapters/index.js'
+import type { Recorder } from '../diagnostics/recorder.js'
 import { createEntityPublisher } from '../ha/entity-publisher.js'
 
 export interface RunOptions {
@@ -22,6 +23,7 @@ export interface RunOptions {
   storage: Storage
   trigger: 'schedule' | 'event' | 'manual'
   config?: Record<string, unknown>
+  recorder?: Recorder
 }
 
 export async function runFlow(flow: Flow, opts: RunOptions): Promise<FlowResult> {
@@ -60,15 +62,25 @@ export async function runFlow(flow: Flow, opts: RunOptions): Promise<FlowResult>
     }
   }
 
+  const finishedAt = Date.now()
   await opts.store.saveFlowRun({
     runId,
     flowId: flow.id,
     trigger: opts.trigger,
     startedAt,
-    finishedAt: Date.now(),
+    finishedAt,
     status: result.status,
     summary: result.summary,
     data: result.data,
+  })
+
+  opts.recorder?.record({
+    type: 'flow_run',
+    flowId: flow.id,
+    trigger: opts.trigger,
+    status: result.status,
+    durationMs: finishedAt - startedAt,
+    summary: result.summary,
   })
 
   // Publish any HA entities the flow asked for. Best-effort; failures

@@ -15,7 +15,34 @@ export type LLMProvider = {
     /** JSON-schema-ish shape so the model returns strictly-typed output */
     schema: Record<string, unknown>
     model?: string
+    /** Free-form label recorded with the diagnostic event for this call. */
+    tag?: string
   }): Promise<T>
+}
+
+/**
+ * Optional sink for diagnostic events. When set on a provider, every
+ * generateJson call records a diagnostic. Decoupled this way so the
+ * llm module never imports from diagnostics.
+ */
+export interface LLMObserver {
+  onCall(event: {
+    provider: string
+    model?: string
+    promptChars: number
+    durationMs: number
+    ok: boolean
+    error?: string
+    tag?: string
+  }): void
+}
+
+let activeObserver: LLMObserver | null = null
+export function setLLMObserver(observer: LLMObserver | null): void {
+  activeObserver = observer
+}
+export function reportLLMCall(event: Parameters<LLMObserver['onCall']>[0]): void {
+  activeObserver?.onCall(event)
 }
 
 export class LLMUnavailableError extends Error {
