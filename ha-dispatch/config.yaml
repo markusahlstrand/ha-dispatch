@@ -6,7 +6,7 @@ arch:
   - aarch64
   - amd64
   - armv7
-url: "https://github.com/sesamyab/ha-dispatch"
+url: "https://github.com/markusahlstrand/ha-dispatch"
 init: false
 hassio_api: true
 homeassistant_api: true
