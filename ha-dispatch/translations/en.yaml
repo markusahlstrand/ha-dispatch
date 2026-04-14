@@ -1,0 +1,22 @@
+configuration:
+  log_level:
+    name: Log level
+    description: Verbosity of the add-on logs
+  llm_provider:
+    name: LLM provider
+    description: Which LLM to use for AI-powered flows (set to "none" to disable)
+  llm_api_key:
+    name: LLM API key
+    description: API key for the selected LLM provider
+  enabled_flows:
+    name: Enabled flows
+    description: Which flows should run (see README for the full list)
+  price_provider:
+    name: Electricity price provider
+    description: Source for hourly electricity prices
+  solcast_api_key:
+    name: Solcast API key
+    description: API key for solar production forecasts (optional)
+  solcast_resource_id:
+    name: Solcast resource ID
+    description: Your Solcast rooftop site ID
