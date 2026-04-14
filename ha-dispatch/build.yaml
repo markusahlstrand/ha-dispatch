@@ -1,7 +1,6 @@
 build_from:
-  aarch64: node:20-alpine
-  amd64: node:20-alpine
-  armv7: node:20-alpine
+  aarch64: ghcr.io/home-assistant/aarch64-base:latest
+  amd64: ghcr.io/home-assistant/amd64-base:latest
 labels:
   org.opencontainers.image.title: HA Dispatch
   org.opencontainers.image.description: Durable, AI-native automation runtime for Home Assistant

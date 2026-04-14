@@ -1,15 +1,16 @@
-ARG BUILD_FROM=node:20-alpine
+ARG BUILD_FROM
 FROM $BUILD_FROM
 
 ENV LANG=C.UTF-8 \
     NODE_ENV=production
 
+# HA base is Alpine; install Node + npm from Alpine packages
+RUN apk add --no-cache nodejs npm
+
 WORKDIR /app
 
 # Copy package manifests first for layer caching
 COPY package.json package-lock.json* ./
-
-# Install runtime + build deps (we'll prune build deps after the bundle)
 RUN npm install --no-audit --no-fund
 
 # Copy source and build the bundle

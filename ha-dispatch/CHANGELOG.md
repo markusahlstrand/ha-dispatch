@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.2 — 2026-04-14
+
+- Use official HA base images (ghcr.io/home-assistant/{arch}-base) and
+  install Node via apk. Supervisor silently rejects non-allowlisted base
+  images, which had caused `npm: not found` during build.
+
 ## 0.1.1 — 2026-04-14
 
 - Switch base image to node:20-alpine with multi-arch build.yaml
