@@ -6,7 +6,44 @@
  * we fall back to environment variables and sane defaults.
  */
 
-import { readFileSync, existsSync } from 'fs'
+import { readFileSync, existsSync, readdirSync } from 'fs'
+
+/**
+ * On HA's Alpine base image, the Supervisor stores the auth token (and
+ * other env vars it injects) as files under the s6 container env dir.
+ * When our process is launched without s6's `with-contenv` wrapper,
+ * process.env is empty for those vars. Read them directly from disk.
+ */
+function readSupervisorToken(): string | undefined {
+  if (process.env.SUPERVISOR_TOKEN) return process.env.SUPERVISOR_TOKEN
+  const candidates = [
+    '/run/s6/container_environment/SUPERVISOR_TOKEN',
+    '/var/run/s6/container_environment/SUPERVISOR_TOKEN',
+  ]
+  for (const p of candidates) {
+    if (existsSync(p)) {
+      try {
+        return readFileSync(p, 'utf-8').trim()
+      } catch {
+        /* fall through */
+      }
+    }
+  }
+  return undefined
+}
+
+function listS6Env(): string[] {
+  for (const dir of ['/run/s6/container_environment', '/var/run/s6/container_environment']) {
+    if (existsSync(dir)) {
+      try {
+        return readdirSync(dir)
+      } catch {
+        /* ignore */
+      }
+    }
+  }
+  return []
+}
 
 export interface AddonConfig {
   log_level: string
@@ -57,6 +94,11 @@ export function loadConfig(): RuntimeConfig {
     hassUrl: isAddon
       ? 'http://supervisor/core'
       : process.env.HASS_URL ?? 'http://localhost:8123',
-    supervisorToken: process.env.SUPERVISOR_TOKEN,
+    supervisorToken: readSupervisorToken(),
   }
+}
+
+export function debugS6Env(): string {
+  const keys = listS6Env()
+  return keys.length > 0 ? keys.sort().join(' ') : '(s6 env dir not present)'
 }

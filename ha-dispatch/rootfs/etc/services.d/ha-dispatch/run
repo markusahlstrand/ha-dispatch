@@ -1,9 +1,0 @@
-#!/command/with-contenv bashio
-# ==============================================================================
-# HA Dispatch service script
-# 'with-contenv' exposes env vars the Supervisor injects into
-# /run/s6/container_environment/ (SUPERVISOR_TOKEN, HASSIO_TOKEN, etc.)
-# ==============================================================================
-bashio::log.info "Starting HA Dispatch..."
-cd /app
-exec node dist/index.js

@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.1.11 — 2026-04-14
+
+- Revert the s6 service script (was fighting the base image's
+  entrypoint and produced `s6-overlay-suexec: fatal: can only run as
+  pid 1`). Back to a plain CMD with `init: false`.
+- Read SUPERVISOR_TOKEN directly from /run/s6/container_environment/
+  at startup. Those files are written by the Supervisor regardless of
+  how the process is launched, so we get the token even without
+  `with-contenv`.
+- Also dump the list of files present under that directory so we can
+  see what the Supervisor staged.
+
 ## 0.1.10 — 2026-04-14
 
 - Root cause of the "disconnected" state: the HA base image uses

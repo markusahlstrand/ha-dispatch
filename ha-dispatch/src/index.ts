@@ -8,7 +8,7 @@
 import { Hono } from 'hono'
 import { serve } from '@hono/node-server'
 import { join } from 'path'
-import { loadConfig } from './config.js'
+import { loadConfig, debugS6Env } from './config.js'
 import { HAClient } from './ha-client.js'
 import { createDatabase } from './db.js'
 import { createFlowsRouter } from './api/flows.js'
@@ -24,9 +24,11 @@ async function start() {
   const db = await createDatabase(join(config.dataDir, 'ha-dispatch.db'))
   console.log(`[ha-dispatch] Database ready at ${config.dataDir}/ha-dispatch.db`)
 
-  // Dump ALL env var keys so we can see exactly what the Supervisor
-  // injects into our container (values omitted).
-  console.log(`[ha-dispatch] env keys: ${Object.keys(process.env).sort().join(' ')}`)
+  // Dump both native env keys and any values the Supervisor staged in
+  // the s6 container_environment directory (used when we're launched
+  // without s6's with-contenv wrapper).
+  console.log(`[ha-dispatch] process.env keys: ${Object.keys(process.env).sort().join(' ')}`)
+  console.log(`[ha-dispatch] s6 env keys: ${debugS6Env()}`)
 
   const ha = new HAClient(
     config.hassUrl,
