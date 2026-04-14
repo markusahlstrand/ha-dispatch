@@ -1,0 +1,3 @@
+#!/command/execlineb -S0
+# On service exit, bring the whole container down (HA will restart it).
+s6-svscanctl -t /var/run/s6/services

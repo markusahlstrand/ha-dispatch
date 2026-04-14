@@ -22,9 +22,13 @@ RUN node build.js
 # Drop dev dependencies after bundling; sql.js is a runtime dep so it stays.
 RUN npm prune --omit=dev
 
+# Install the s6 service script. HA's base image uses s6-overlay; our
+# service is started with 'with-contenv' so SUPERVISOR_TOKEN and other
+# Supervisor-injected vars are available to the Node process.
+COPY rootfs/ /
+RUN chmod a+x /etc/services.d/ha-dispatch/run /etc/services.d/ha-dispatch/finish
+
 # Runtime env
 ENV NODE_ENV=production
 
 EXPOSE 8099
-
-CMD ["node", "dist/index.js"]

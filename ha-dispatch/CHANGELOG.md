@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.1.10 — 2026-04-14
+
+- Root cause of the "disconnected" state: the HA base image uses
+  s6-overlay, and Supervisor-injected env vars live in
+  /run/s6/container_environment/, not the container's native env.
+  Processes started via plain `CMD` (with init: false) can't see them —
+  hence env keys was only OLDPWD/PATH/PWD/SHLVL.
+- Replace the bare `CMD` with a proper s6 service script at
+  /etc/services.d/ha-dispatch/run that uses `with-contenv bashio` to
+  load the Supervisor env. Remove init: false so s6 runs as PID 1.
+
 ## 0.1.9 — 2026-04-14
 
 - Supervisor was not injecting SUPERVISOR_TOKEN into our container
