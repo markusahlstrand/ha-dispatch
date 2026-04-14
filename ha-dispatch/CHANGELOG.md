@@ -1,5 +1,30 @@
 # Changelog
 
+## 0.1.21 — 2026-04-14
+
+- Chat can now actually create Home Assistant automations. Previously
+  the agent had the automation-writer behind it but no matching tool,
+  so when asked to create an automation it hallucinated "I can't do
+  that" and stopped.
+- New `src/tools/automation-tools.ts`:
+    create_ha_automation   — raw HA automation upsert via /api/config/
+                             automation/config/; accepts trigger /
+                             condition / action / mode; names the
+                             automation `dispatch_ad_hoc_{slug}`.
+    list_ha_automations    — see what Dispatch has deployed so far.
+    remove_ha_automation   — undo one by slug.
+    list_flows             — what Dispatch flows exist + config_schema +
+                             current_config + deployed state.
+    configure_flow         — write a flow's config.
+    deploy_flow            — for native flows, materialize + push YAML.
+    disable_flow           — for native flows, remove from HA.
+- ToolContext gains optional Storage so tools that invoke the flow
+  runner (deploy_flow) get the real adapters instead of a shim.
+- Chat system prompt now tells the model explicitly: you CAN create
+  automations; here's the workflow (confirm entities → plan → call
+  create_ha_automation → verify with list_ha_automations). Forbids
+  the old "I can't do that" hallucination.
+
 ## 0.1.20 — 2026-04-14
 
 - Learnings (shared memory). Every LLM call that reasons about this HA

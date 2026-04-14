@@ -11,6 +11,7 @@
 import { Hono } from 'hono'
 import type { HAClient } from '../ha-client.js'
 import type { AppStore } from '../store.js'
+import type { Storage } from '../adapters/index.js'
 import type { LLMProvider } from '../llm/index.js'
 import type { Recorder } from '../diagnostics/recorder.js'
 import {
@@ -24,7 +25,13 @@ import { getPersona } from '../chat/persona.js'
 import { CAPABILITY_TEMPLATES } from '../chat/templates.js'
 import { buildInventory } from '../chat/inventory.js'
 
-type Deps = { ha: HAClient; store: AppStore; llm: LLMProvider | null; recorder: Recorder | null }
+type Deps = {
+  ha: HAClient
+  store: AppStore
+  storage: Storage | null
+  llm: LLMProvider | null
+  recorder: Recorder | null
+}
 
 export function createChatRouter() {
   const app = new Hono<{ Variables: Deps }>()
@@ -79,6 +86,7 @@ function ctxDeps(c: { get: (key: string) => unknown }): Deps {
   return {
     ha: c.get('ha') as HAClient,
     store: c.get('store') as AppStore,
+    storage: (c.get('storage') as Storage | null) ?? null,
     llm: c.get('llm') as LLMProvider | null,
     recorder: (c.get('recorder') as Recorder | null) ?? null,
   }

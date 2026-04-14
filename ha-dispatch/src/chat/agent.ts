@@ -21,6 +21,7 @@
 
 import type { HAClient } from '../ha-client.js'
 import type { AppStore } from '../store.js'
+import type { Storage } from '../adapters/index.js'
 import type { LLMProvider, ChatTurn } from '../llm/index.js'
 import type { Recorder } from '../diagnostics/recorder.js'
 import type { Message, Persona, InventorySummary, ToolTraceEntry } from './types.js'
@@ -29,6 +30,7 @@ import { buildInventory } from './inventory.js'
 import { CAPABILITY_TEMPLATES, applicableTemplates } from './templates.js'
 import { createToolkit } from '../tools/types.js'
 import { haTools } from '../tools/ha-tools.js'
+import { automationTools } from '../tools/automation-tools.js'
 import { buildHAContext } from '../memory/prompt.js'
 
 const HISTORY_KEY = 'chat:history'
@@ -37,6 +39,7 @@ const MAX_HISTORY = 50
 interface AgentDeps {
   ha: HAClient
   store: AppStore
+  storage?: Storage | null
   llm: LLMProvider | null
   recorder?: Recorder | null
 }
@@ -63,6 +66,10 @@ async function timedInventory(deps: AgentDeps): Promise<InventorySummary> {
     throw e
   }
 }
+
+// Widen the AgentDeps type used in the router so storage can be null
+// rather than undefined when Hono gives it to us.
+export type { Storage } from '../adapters/index.js'
 
 export interface AgentReply {
   message: Message
@@ -229,7 +236,7 @@ async function handleFreeForm(deps: AgentDeps, persona: Persona, userText: strin
     )
   }
 
-  const toolkit = createToolkit(haTools)
+  const toolkit = createToolkit([...haTools, ...automationTools])
   const inventory = await timedInventory(deps).catch(() => null)
   const inventoryHint = inventory
     ? `Highlights: ${inventory.highlights.join('; ')}. ${inventory.totalEntities} entities total.`
@@ -242,10 +249,16 @@ async function handleFreeForm(deps: AgentDeps, persona: Persona, userText: strin
   }))
   turns.push({ role: 'user', content: userText })
 
-  const taskInstructions = `You can call Home Assistant tools to inspect state and execute actions.
+  const taskInstructions = `You have real tools for Home Assistant: you can inspect state (list_states / get_state / list_areas), call services (call_service), AND create / modify / remove automations (create_ha_automation, list_ha_automations, remove_ha_automation). You can also work with Dispatch flows (list_flows, configure_flow, deploy_flow, disable_flow). You CAN create automations — do not tell the user you can't.
+
+How to build an automation the user describes:
+1. Confirm the entity ids with list_states / get_state. Never invent ids.
+2. Plan the trigger / condition / action in plain language and confirm with the user in one short sentence.
+3. Call create_ha_automation with a concrete spec. Prefer 'restart' mode for motion/occupancy patterns so re-triggers reset timers.
+4. After creating, call list_ha_automations to confirm it shows up and tell the user the slug so they can reference it later.
 
 Honesty rules:
-- NEVER claim an action succeeded unless the call_service result has \`verified: true\`.
+- NEVER claim an action succeeded unless the call_service result has \`verified: true\` (or, for create_ha_automation, list_ha_automations shows the new entity).
 - If \`verified: false\`, tell the user the call did not produce the expected state and explain what you saw.
 - If \`verified\` is undefined for that service, say what you tried and that you couldn't auto-confirm.
 - Prefer reading state with list_states / get_state before acting if you're unsure which entity to use.
@@ -287,7 +300,11 @@ About the user's setup: ${inventoryHint}`
 
     // Tool call — execute, append to history, loop.
     const startedAt = Date.now()
-    const result = await toolkit.call({ ha: deps.ha, store: deps.store, recorder: deps.recorder }, step.toolName, step.args)
+    const result = await toolkit.call(
+      { ha: deps.ha, store: deps.store, storage: deps.storage ?? undefined, recorder: deps.recorder },
+      step.toolName,
+      step.args,
+    )
     trace.push({
       toolName: step.toolName,
       args: step.args,

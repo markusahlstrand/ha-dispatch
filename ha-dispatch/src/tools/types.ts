@@ -17,12 +17,14 @@
 
 import type { HAClient } from '../ha-client.js'
 import type { AppStore } from '../store.js'
+import type { Storage } from '../adapters/index.js'
 import type { Recorder } from '../diagnostics/recorder.js'
 import type { ToolSpec } from '../llm/types.js'
 
 export interface ToolContext {
   ha: HAClient
   store: AppStore
+  storage?: Storage
   recorder?: Recorder | null
 }
 
