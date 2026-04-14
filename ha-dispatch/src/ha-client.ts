@@ -58,10 +58,10 @@ export class HAClient {
 
   async connect(): Promise<void> {
     return new Promise((resolve, reject) => {
-      // Build WebSocket URL
-      const wsUrl = this.hassUrl
-        .replace(/^http/, 'ws')
-        .replace(/\/$/, '') + '/api/websocket'
+      // hassUrl must already point at the WebSocket endpoint (addon mode:
+      // ws://supervisor/core/websocket, direct mode: ws://host:8123/api/websocket).
+      // Only normalize the scheme so http(s):// is accepted.
+      const wsUrl = this.hassUrl.replace(/^http/, 'ws')
 
       console.log(`[HA] Connecting to ${wsUrl}`)
       this.ws = new WebSocket(wsUrl)

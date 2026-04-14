@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.6 — 2026-04-14
+
+- Stop appending '/api/websocket' inside ha-client. Via the Supervisor
+  proxy the correct HA WebSocket path is '/core/websocket' (the proxy
+  strips the /api prefix). The hassUrl now carries the full endpoint
+  path and the client just normalizes the scheme.
+
 ## 0.1.5 — 2026-04-14
 
 - Fix HA WebSocket URL: pass origin only so ha-client's `/api/websocket`

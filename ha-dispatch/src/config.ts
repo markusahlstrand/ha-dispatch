@@ -51,9 +51,12 @@ export function loadConfig(): RuntimeConfig {
     isAddon,
     port: Number(process.env.PORT ?? 8099),
     dataDir: isAddon ? '/data' : process.env.DATA_DIR ?? './data',
-    // The ha-client appends "/api/websocket" to this URL, so pass the
-    // origin only. In addon mode we go through the Supervisor proxy.
-    hassUrl: isAddon ? 'http://supervisor/core' : process.env.HASS_URL ?? 'ws://localhost:8123',
+    // Full WebSocket URL. Via the Supervisor proxy, HA's WebSocket endpoint
+    // is /core/websocket (the proxy already strips /api). Direct access
+    // uses HA's own /api/websocket path.
+    hassUrl: isAddon
+      ? 'http://supervisor/core/websocket'
+      : process.env.HASS_URL ?? 'ws://localhost:8123/api/websocket',
     supervisorToken: process.env.SUPERVISOR_TOKEN,
   }
 }
