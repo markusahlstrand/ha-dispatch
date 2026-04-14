@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.1.14 — 2026-04-14
+
+- Storage adapter refactor. Split the old `Database` interface into three
+  orthogonal adapters — `KVAdapter`, `DatabaseAdapter`, `BlobAdapter` —
+  under `src/adapters/`, with a `Storage` bundle that callers depend on.
+  Added the sql.js implementations and a local filesystem blob adapter;
+  future Cloudflare/D1/R2 implementations drop in without changing any
+  call site.
+- New `src/store.ts` with typed domain helpers (saveFlowRun, getMapping,
+  kvGet, ...) built on the adapter bundle. `FlowContext` now exposes
+  both `store` (domain) and `storage` (raw adapters) so flows pick the
+  right level.
+- Delete old `src/db.ts`. All call sites migrated to async store methods.
+
 ## 0.1.13 — 2026-04-14
 
 - LLM-first entity discovery. When `llm_api_key` is set, the energy

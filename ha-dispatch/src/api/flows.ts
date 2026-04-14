@@ -9,46 +9,50 @@
  * POST /api/flows/:id/config         Update flow-specific config
  * GET  /api/flows/:id/mapping        Get entity mapping (for flows that use it)
  * POST /api/flows/:id/mapping        Save entity mapping
+ * POST /api/flows/:id/discover       Run entity discovery (LLM when available)
  */
 
 import { Hono } from 'hono'
 import type { HAClient } from '../ha-client.js'
-import type { Database } from '../db.js'
+import type { AppStore } from '../store.js'
+import type { Storage } from '../adapters/index.js'
 import type { LLMProvider } from '../llm/index.js'
 import { listFlows, getFlow } from '../runtime/flow-registry.js'
 import { runFlow } from '../runtime/flow-runner.js'
 import { classifyEntities } from '../flows/energy-optimizer/discover.js'
 import { classifyEntitiesLLM } from '../flows/energy-optimizer/classify-llm.js'
-import { suggestFlowsLLM } from '../runtime/suggest-flows.js'
 
-type Deps = { ha: HAClient; db: Database; llm: LLMProvider | null }
+type Deps = { ha: HAClient; store: AppStore; storage: Storage; llm: LLMProvider | null }
 
 export function createFlowsRouter() {
   const app = new Hono<{ Variables: Deps }>()
 
   // List flows
-  app.get('/', (c) => {
-    const db = c.get('db') as Database
-    const flows = listFlows().map((f) => {
-      const runs = db.getFlowRuns(f.id, 1)
-      return {
-        id: f.id,
-        name: f.name,
-        description: f.description,
-        icon: f.icon,
-        triggers: f.triggers,
-        lastRun: runs[0] ?? null,
-        hasMapping: db.getMapping(f.id).length > 0,
-      }
-    })
+  app.get('/', async (c) => {
+    const store = c.get('store') as AppStore
+    const flows = await Promise.all(
+      listFlows().map(async (f) => {
+        const runs = await store.getFlowRuns(f.id, 1)
+        const mapping = await store.getMapping(f.id)
+        return {
+          id: f.id,
+          name: f.name,
+          description: f.description,
+          icon: f.icon,
+          triggers: f.triggers,
+          lastRun: runs[0] ?? null,
+          hasMapping: mapping.length > 0,
+        }
+      }),
+    )
     return c.json({ flows })
   })
 
   // Flow details
-  app.get('/:id', (c) => {
+  app.get('/:id', async (c) => {
     const flow = getFlow(c.req.param('id'))
     if (!flow) return c.json({ error: 'not_found' }, 404)
-    const db = c.get('db') as Database
+    const store = c.get('store') as AppStore
     return c.json({
       id: flow.id,
       name: flow.name,
@@ -56,9 +60,9 @@ export function createFlowsRouter() {
       icon: flow.icon,
       triggers: flow.triggers,
       configSchema: flow.configSchema ?? [],
-      config: db.getFlowConfig(flow.id),
-      mapping: db.getMapping(flow.id),
-      lastRuns: db.getFlowRuns(flow.id, 10),
+      config: await store.getFlowConfig(flow.id),
+      mapping: await store.getMapping(flow.id),
+      lastRuns: await store.getFlowRuns(flow.id, 10),
     })
   })
 
@@ -68,45 +72,46 @@ export function createFlowsRouter() {
     if (!flow) return c.json({ error: 'not_found' }, 404)
 
     const ha = c.get('ha') as HAClient
-    const db = c.get('db') as Database
-    const config = db.getFlowConfig(flow.id)
+    const store = c.get('store') as AppStore
+    const storage = c.get('storage') as Storage
+    const config = await store.getFlowConfig(flow.id)
 
-    const result = await runFlow(flow, { ha, db, trigger: 'manual', config })
+    const result = await runFlow(flow, { ha, store, storage, trigger: 'manual', config })
     return c.json({ result })
   })
 
   // Run history
-  app.get('/:id/runs', (c) => {
-    const db = c.get('db') as Database
+  app.get('/:id/runs', async (c) => {
+    const store = c.get('store') as AppStore
     const limit = Number(c.req.query('limit') ?? 50)
-    return c.json({ runs: db.getFlowRuns(c.req.param('id'), limit) })
+    return c.json({ runs: await store.getFlowRuns(c.req.param('id'), limit) })
   })
 
   // Config
-  app.get('/:id/config', (c) => {
-    const db = c.get('db') as Database
-    return c.json({ config: db.getFlowConfig(c.req.param('id')) })
+  app.get('/:id/config', async (c) => {
+    const store = c.get('store') as AppStore
+    return c.json({ config: await store.getFlowConfig(c.req.param('id')) })
   })
 
   app.post('/:id/config', async (c) => {
-    const db = c.get('db') as Database
+    const store = c.get('store') as AppStore
     const body = (await c.req.json()) as { config: Record<string, unknown> }
-    db.setFlowConfig(c.req.param('id'), body.config ?? {})
+    await store.setFlowConfig(c.req.param('id'), body.config ?? {})
     return c.json({ ok: true })
   })
 
   // Mapping
-  app.get('/:id/mapping', (c) => {
-    const db = c.get('db') as Database
-    return c.json({ mapping: db.getMapping(c.req.param('id')) })
+  app.get('/:id/mapping', async (c) => {
+    const store = c.get('store') as AppStore
+    return c.json({ mapping: await store.getMapping(c.req.param('id')) })
   })
 
   app.post('/:id/mapping', async (c) => {
-    const db = c.get('db') as Database
+    const store = c.get('store') as AppStore
     const body = (await c.req.json()) as {
       mappings: { role: string; entityId: string; confidence: number }[]
     }
-    db.saveMapping(c.req.param('id'), body.mappings ?? [])
+    await store.saveMapping(c.req.param('id'), body.mappings ?? [])
     return c.json({ ok: true })
   })
 

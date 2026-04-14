@@ -12,11 +12,13 @@
 
 import type { Flow, FlowContext, FlowResult } from './types.js'
 import type { HAClient } from '../ha-client.js'
-import type { Database } from '../db.js'
+import type { AppStore } from '../store.js'
+import type { Storage } from '../adapters/index.js'
 
 export interface RunOptions {
   ha: HAClient
-  db: Database
+  store: AppStore
+  storage: Storage
   trigger: 'schedule' | 'event' | 'manual'
   config?: Record<string, unknown>
 }
@@ -28,7 +30,8 @@ export async function runFlow(flow: Flow, opts: RunOptions): Promise<FlowResult>
 
   const ctx: FlowContext = {
     ha: opts.ha,
-    db: opts.db,
+    store: opts.store,
+    storage: opts.storage,
     config: opts.config ?? {},
     log: (msg, data) => {
       console.log(`[flow:${flow.id}] ${msg}`, data ?? '')
@@ -56,8 +59,7 @@ export async function runFlow(flow: Flow, opts: RunOptions): Promise<FlowResult>
     }
   }
 
-  // Record in history
-  opts.db.saveFlowRun({
+  await opts.store.saveFlowRun({
     runId,
     flowId: flow.id,
     trigger: opts.trigger,

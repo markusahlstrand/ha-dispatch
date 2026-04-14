@@ -13,11 +13,15 @@
  */
 
 import type { HAClient } from '../ha-client.js'
-import type { Database } from '../db.js'
+import type { AppStore } from '../store.js'
+import type { Storage } from '../adapters/index.js'
 
 export interface FlowContext {
   ha: HAClient
-  db: Database
+  /** High-level domain helpers (saveFlowRun, getMapping, kvSet, ...) */
+  store: AppStore
+  /** Raw storage adapters when a flow needs direct KV/Blob/SQL access */
+  storage: Storage
   log: (msg: string, data?: unknown) => void
   // Durable step primitives (Phase 1: simple wrappers; Phase 2+: DO-backed)
   step: {

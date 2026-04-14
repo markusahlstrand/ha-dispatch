@@ -1,18 +1,19 @@
 /**
  * HA Dispatch — main entry point.
  *
- * Loads config, boots the HA client, sets up the flow runtime, and
- * serves the dashboard + API on the port HA Ingress expects.
+ * Loads config, assembles the Storage bundle (sqlite KV + DB, local
+ * Blob), boots the HA client, sets up the flow runtime, and serves
+ * the dashboard + API on the port HA Ingress expects.
  */
 
 import { Hono } from 'hono'
 import { serve } from '@hono/node-server'
-import { join } from 'path'
 import { loadConfig, debugS6Env } from './config.js'
 import { HAClient } from './ha-client.js'
-import { createDatabase } from './db.js'
+import { createLocalStorage, type Storage } from './adapters/index.js'
+import { createAppStore, type AppStore } from './store.js'
 import { createFlowsRouter } from './api/flows.js'
-import { listFlows, getFlow } from './runtime/flow-registry.js'
+import { listFlows } from './runtime/flow-registry.js'
 import { runFlow } from './runtime/flow-runner.js'
 import { createLLM } from './llm/index.js'
 import { suggestFlowsLLM } from './runtime/suggest-flows.js'
@@ -22,9 +23,11 @@ async function start() {
   const config = loadConfig()
   console.log(`[ha-dispatch] Starting (addon=${config.isAddon}, port=${config.port})`)
 
-  // DB
-  const db = await createDatabase(join(config.dataDir, 'ha-dispatch.db'))
-  console.log(`[ha-dispatch] Database ready at ${config.dataDir}/ha-dispatch.db`)
+  // Storage: sqlite KV + DB + local blob (all under /data).
+  // When we host Dispatch on Cloudflare, swap in the D1/KV/R2 bundle here.
+  const storage = await createLocalStorage(config.dataDir)
+  const store = await createAppStore(storage)
+  console.log(`[ha-dispatch] Storage ready at ${config.dataDir}`)
 
   // Dump both native env keys and any values the Supervisor staged in
   // the s6 container_environment directory (used when we're launched
@@ -48,7 +51,8 @@ async function start() {
 
   app.use('*', async (c, next) => {
     c.set('ha' as never, ha)
-    c.set('db' as never, db)
+    c.set('store' as never, store)
+    c.set('storage' as never, storage)
     c.set('llm' as never, llm)
     await next()
   })
@@ -60,6 +64,7 @@ async function start() {
       version: '0.1.0',
       connected: ha.isConnected(),
       addon: config.isAddon,
+      llm: llm ? llm.id : null,
       flows: listFlows().map((f) => f.id),
     }),
   )
@@ -90,7 +95,7 @@ async function start() {
     })
 
   // Minimal scheduler: tick every minute and run flows whose cron matches
-  const scheduler = startScheduler(ha, db, config)
+  const scheduler = startScheduler(ha, store, storage, config)
 
   // HTTP server
   serve({ fetch: app.fetch, port: config.port }, (info) => {
@@ -99,11 +104,11 @@ async function start() {
   })
 
   // Shutdown
-  process.on('SIGTERM', () => {
+  process.on('SIGTERM', async () => {
     console.log('[ha-dispatch] Shutting down...')
     clearInterval(scheduler)
     ha.disconnect()
-    db.close()
+    await storage.close()
     process.exit(0)
   })
 }
@@ -115,7 +120,12 @@ async function start() {
  * Phase 2 replaces this with Dispatch DO alarms so scheduled work
  * survives restarts and doesn't double-fire.
  */
-function startScheduler(ha: HAClient, db: Awaited<ReturnType<typeof createDatabase>>, config: ReturnType<typeof loadConfig>) {
+function startScheduler(
+  ha: HAClient,
+  store: AppStore,
+  storage: Storage,
+  config: ReturnType<typeof loadConfig>,
+) {
   const enabled = new Set(config.enabled_flows)
   return setInterval(async () => {
     const now = new Date()
@@ -125,8 +135,8 @@ function startScheduler(ha: HAClient, db: Awaited<ReturnType<typeof createDataba
         if (trigger.type !== 'schedule' || !trigger.cron) continue
         if (cronMatches(trigger.cron, now)) {
           console.log(`[ha-dispatch] Scheduled run: ${flow.id}`)
-          const flowConfig = db.getFlowConfig(flow.id)
-          runFlow(flow, { ha, db, trigger: 'schedule', config: flowConfig }).catch((e) =>
+          const flowConfig = await store.getFlowConfig(flow.id)
+          runFlow(flow, { ha, store, storage, trigger: 'schedule', config: flowConfig }).catch((e) =>
             console.error(`[ha-dispatch] ${flow.id} failed:`, e),
           )
         }
@@ -140,7 +150,7 @@ function cronMatches(cron: string, d: Date): boolean {
   const parts = cron.split(/\s+/)
   if (parts.length !== 5) return false
   const [min, hour, dom, month, dow] = parts
-  const matches = (field: string, value: number, max: number): boolean => {
+  const matches = (field: string, value: number): boolean => {
     if (field === '*') return true
     if (field.startsWith('*/')) return value % Number(field.slice(2)) === 0
     if (field.includes(',')) return field.split(',').some((v) => Number(v) === value)
@@ -151,11 +161,11 @@ function cronMatches(cron: string, d: Date): boolean {
     return Number(field) === value
   }
   return (
-    matches(min, d.getMinutes(), 59) &&
-    matches(hour, d.getHours(), 23) &&
-    matches(dom, d.getDate(), 31) &&
-    matches(month, d.getMonth() + 1, 12) &&
-    matches(dow, d.getDay(), 6)
+    matches(min, d.getMinutes()) &&
+    matches(hour, d.getHours()) &&
+    matches(dom, d.getDate()) &&
+    matches(month, d.getMonth() + 1) &&
+    matches(dow, d.getDay())
   )
 }
 

@@ -26,10 +26,10 @@ interface Plan {
 }
 
 async function run(ctx: FlowContext): Promise<FlowResult> {
-  const { ha, db, step, log } = ctx
+  const { ha, store, step, log } = ctx
 
   // Check mapping
-  const mapping = db.getMapping('energy-optimizer')
+  const mapping = await store.getMapping('energy-optimizer')
   if (mapping.length === 0) {
     return {
       status: 'noop',
@@ -37,8 +37,8 @@ async function run(ctx: FlowContext): Promise<FlowResult> {
     }
   }
 
-  const evSoc = db.getMappingByRole('energy-optimizer', 'ev_battery_level')
-  const charger = db.getMappingByRole('energy-optimizer', 'ev_charger_switch')
+  const evSoc = await store.getMappingByRole('energy-optimizer', 'ev_battery_level')
+  const charger = await store.getMappingByRole('energy-optimizer', 'ev_charger_switch')
 
   if (!evSoc || !charger) {
     return {
@@ -113,7 +113,7 @@ async function run(ctx: FlowContext): Promise<FlowResult> {
 
   // Phase 1: just record the plan, don't actually flip switches yet
   // (The user will approve actuation in Phase 2 via a dry-run → enable toggle)
-  db.kvSet('energy-optimizer:latest-plan', plan)
+  await store.kvSet('energy-optimizer:latest-plan', plan)
 
   return {
     status: 'success',
