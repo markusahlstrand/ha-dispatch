@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.1.12 — 2026-04-14
+
+- Tighten energy-optimizer entity discovery heuristics after cross-check
+  against a real Deye + Tesla + PVPC setup:
+  - battery_soc now rejects personal-device batteries (iPhone, watch,
+    laptop, zigbee sensors) and requires an inverter/home/storage context.
+  - ev_charger_switch requires an EV context (tesla/model_y/car) AND
+    rejects home-battery-related switches that also contain "charging".
+  - ev_charger_current looks on the `number` domain (and `sensor`) since
+    Tesla integrations expose amperage as number.*, not sensor.*.
+  - house_load / grid_power / battery_power penalize per-phase sensors
+    (_l1_/_l2_/_l3_) so totals rank above phase-specific values.
+  - solar_power excludes kWh counters and forecast sensors.
+  - Added ev_charge_cable role (binary_sensor.*_charge_cable) used by
+    existing solar-surplus automations as a "plugged in" guard.
+
 ## 0.1.11 — 2026-04-14
 
 - Revert the s6 service script (was fighting the base image's
