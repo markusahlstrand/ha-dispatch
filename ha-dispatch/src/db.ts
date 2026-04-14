@@ -14,6 +14,9 @@
 import initSqlJs, { type Database as SqlJsDatabase, type SqlValue } from 'sql.js'
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'fs'
 import { dirname } from 'path'
+import { fileURLToPath } from 'url'
+
+const HERE = dirname(fileURLToPath(import.meta.url))
 
 export interface FlowRun {
   runId: string
@@ -60,7 +63,16 @@ export async function createDatabase(dbPath: string): Promise<Database> {
   const dir = dirname(dbPath)
   if (!existsSync(dir)) mkdirSync(dir, { recursive: true })
 
-  const SQL = await initSqlJs({})
+  // In dev (tsx) the wasm lives under node_modules/sql.js/dist/.
+  // In production (bundled) we copy it next to dist/index.js during build.
+  const SQL = await initSqlJs({
+    locateFile: (file: string) => {
+      const bundled = `${HERE}/${file}`
+      return existsSync(bundled)
+        ? bundled
+        : `${HERE}/../node_modules/sql.js/dist/${file}`
+    },
+  })
 
   let db: SqlJsDatabase
   if (existsSync(dbPath)) {
