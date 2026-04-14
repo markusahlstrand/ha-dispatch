@@ -12,6 +12,7 @@
 
 import type { Tool } from './types.js'
 import { verifyServiceCall } from './verify.js'
+import { createLearningsStore, type LearningCategory } from '../memory/learnings.js'
 
 export const listStatesTool: Tool<{ domain?: string; limit?: number }, unknown> = {
   spec: {
@@ -159,7 +160,51 @@ export const listAreasTool: Tool<Record<string, never>, unknown> = {
   },
 }
 
-export const haTools = [listStatesTool, getStateTool, callServiceTool, listAreasTool] as Tool<
-  Record<string, unknown>,
+export const recordLearningTool: Tool<
+  { text: string; category?: LearningCategory; entity_ids?: string[]; source?: string },
   unknown
->[]
+> = {
+  spec: {
+    name: 'record_learning',
+    description:
+      'Record a durable note about THIS Home Assistant installation so future turns (yours and other flows) will see it. Use this when you figure out something non-obvious: entity aliases that map to physical devices, entities whose state is unreliable, user preferences, quirks, patterns that work. Be specific and cite entity ids. Do NOT record secrets, tokens, or passwords. Do NOT record one-off facts that will not help next time.',
+    parameters: {
+      type: 'object',
+      properties: {
+        text: {
+          type: 'string',
+          description: 'One sentence, concrete, useful next time. E.g. "cover.office_right_blinds is a template that reports unknown; control cover.shellyplus2pm_d48afc764010_cover_0 directly".',
+        },
+        category: {
+          type: 'string',
+          enum: ['entity_alias', 'entity_quirk', 'user_preference', 'pattern', 'note'],
+          description: 'Optional category. Default: note.',
+        },
+        entity_ids: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Entity ids this learning is about.',
+        },
+      },
+      required: ['text'],
+    },
+  },
+  async execute({ store }, args) {
+    const learnings = createLearningsStore(store)
+    const learning = await learnings.add({
+      category: (args.category as LearningCategory) ?? 'note',
+      text: String(args.text).trim(),
+      entityIds: args.entity_ids,
+      source: args.source ?? 'chat',
+    })
+    return { ok: true, id: learning.id, stored: learning.text }
+  },
+}
+
+export const haTools = [
+  listStatesTool,
+  getStateTool,
+  callServiceTool,
+  listAreasTool,
+  recordLearningTool,
+] as Tool<Record<string, unknown>, unknown>[]

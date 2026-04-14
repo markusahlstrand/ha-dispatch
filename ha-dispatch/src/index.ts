@@ -15,6 +15,7 @@ import { createAppStore, type AppStore } from './store.js'
 import { createFlowsRouter } from './api/flows.js'
 import { createChatRouter } from './api/chat.js'
 import { createDiagnosticsRouter } from './api/diagnostics.js'
+import { createLearningsRouter } from './api/learnings.js'
 import { createRecorder } from './diagnostics/recorder.js'
 import { setLLMObserver } from './llm/types.js'
 import { listFlows } from './runtime/flow-registry.js'
@@ -88,11 +89,14 @@ async function start() {
   // Diagnostics router (event buffer + downloadable report)
   app.route('/api/diagnostics', createDiagnosticsRouter())
 
+  // Learnings router (memory/notes the assistant accumulates about this HA)
+  app.route('/api/learnings', createLearningsRouter())
+
   // LLM-powered flow suggestions (based on the user's entity inventory)
   app.post('/api/suggestions', async (c) => {
     if (!llm) return c.json({ error: 'llm_disabled', suggestions: [] }, 400)
     try {
-      const suggestions = await suggestFlowsLLM(ha, llm)
+      const suggestions = await suggestFlowsLLM(ha, llm, store)
       return c.json({ suggestions })
     } catch (e) {
       return c.json({ error: (e as Error).message, suggestions: [] }, 500)

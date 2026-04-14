@@ -1,5 +1,28 @@
 # Changelog
 
+## 0.1.20 — 2026-04-14
+
+- Learnings (shared memory). Every LLM call that reasons about this HA
+  installation now pulls from — and can write to — a single learnings
+  store. The assistant stops re-discovering the same quirks every turn.
+- New `src/memory/` module:
+    - learnings.ts — typed Learning + KV-backed LearningsStore
+    - prompt.ts — buildHAContext(store) assembles persona + learnings
+      into a shared system prompt; every HA-touching LLM call uses it.
+- `record_learning` tool added to the chat toolkit. The assistant calls
+  it when it figures out something non-obvious (an entity alias that
+  reports `unknown` but a real device entity works; a user preference;
+  a working control pattern). One-sentence, with entity_ids.
+- Wired into three call sites so far: chat freeform agent, energy
+  optimizer entity classification, flow-suggestions generator. All
+  three now receive the same learnings context.
+- Chat system prompt now instructs the model to prefer entities with
+  real-valued state over template/alias entities that report
+  `unknown`, and to record learnings when useful.
+- New UI tab "Memory" lists all learnings (category chip, timestamp,
+  entity ids, inline delete). Add manual learnings with + button.
+- API: GET / POST / PATCH / DELETE /api/learnings.
+
 ## 0.1.19 — 2026-04-14
 
 - Chat tool execution. The free-form chat assistant can now actually

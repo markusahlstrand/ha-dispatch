@@ -160,7 +160,7 @@ export function createFlowsRouter() {
     const llm = c.get('llm') as LLMProvider | null
     if (llm) {
       try {
-        const { candidates, notes } = await classifyEntitiesLLM(ha, llm)
+        const { candidates, notes } = await classifyEntitiesLLM(ha, llm, c.get('store') as AppStore)
         return c.json({ candidates, notes, source: 'llm' })
       } catch (e) {
         console.warn('[discover] LLM classification failed; falling back:', (e as Error).message)

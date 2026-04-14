@@ -29,6 +29,7 @@ import { buildInventory } from './inventory.js'
 import { CAPABILITY_TEMPLATES, applicableTemplates } from './templates.js'
 import { createToolkit } from '../tools/types.js'
 import { haTools } from '../tools/ha-tools.js'
+import { buildHAContext } from '../memory/prompt.js'
 
 const HISTORY_KEY = 'chat:history'
 const MAX_HISTORY = 50
@@ -241,16 +242,26 @@ async function handleFreeForm(deps: AgentDeps, persona: Persona, userText: strin
   }))
   turns.push({ role: 'user', content: userText })
 
-  const systemPrompt = `${buildSystemPrompt(persona)}
+  const taskInstructions = `You can call Home Assistant tools to inspect state and execute actions.
 
-You can call Home Assistant tools to inspect state and execute actions. Honesty rules:
-- Never claim an action succeeded unless the call_service result has \`verified: true\`.
+Honesty rules:
+- NEVER claim an action succeeded unless the call_service result has \`verified: true\`.
 - If \`verified: false\`, tell the user the call did not produce the expected state and explain what you saw.
 - If \`verified\` is undefined for that service, say what you tried and that you couldn't auto-confirm.
 - Prefer reading state with list_states / get_state before acting if you're unsure which entity to use.
-- Keep responses short and concrete; quote the specific entity ids you acted on.
+
+When reading list_states, prefer entities whose state is a real value (on/off/open/closed/numbers) over entities reporting \`unknown\` or \`unavailable\` — the latter are usually template/alias entities that won't report feedback. Figure out which underlying device entity actually has state feedback.
+
+When you discover something the user or future turns should remember — an entity alias that maps to a physical device, an entity whose verification fails because it's a template/alias, a preferred way to control a device, a user preference — call record_learning so it sticks. Be specific; cite entity ids.
+
+Keep user-facing responses short and concrete; quote the specific entity ids you acted on.
 
 About the user's setup: ${inventoryHint}`
+
+  const systemPrompt = await buildHAContext({
+    store: deps.store,
+    taskInstructions,
+  })
 
   const trace: ToolTraceEntry[] = []
   let finalText = ''

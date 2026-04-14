@@ -43,6 +43,7 @@ const HTML = `<!DOCTYPE html>
       <nav class="flex gap-1 ml-4">
         <a href="#/" id="tab-chat" class="px-3 py-1.5 rounded text-sm font-medium hover:bg-gray-100">Chat</a>
         <a href="#/flows" id="tab-flows" class="px-3 py-1.5 rounded text-sm font-medium hover:bg-gray-100">Flows</a>
+        <a href="#/learnings" id="tab-learnings" class="px-3 py-1.5 rounded text-sm font-medium hover:bg-gray-100">Memory</a>
       </nav>
     </div>
     <div class="flex items-center gap-3">
@@ -106,13 +107,90 @@ async function renderHealth() {
 }
 
 function setActiveTab(name) {
-  for (const id of ['tab-chat', 'tab-flows']) {
+  for (const id of ['tab-chat', 'tab-flows', 'tab-learnings']) {
     const el = document.getElementById(id);
     if (!el) continue;
     el.className = 'px-3 py-1.5 rounded text-sm font-medium hover:bg-gray-100';
   }
   const active = document.getElementById('tab-' + name);
   if (active) active.className = 'px-3 py-1.5 rounded text-sm font-medium bg-gray-900 text-white';
+}
+
+// ─── LEARNINGS ─────────────────────────────────────────────
+
+async function renderLearnings() {
+  setActiveTab('learnings');
+  view.innerHTML = '<div class="text-gray-400">Loading...</div>';
+  const { learnings } = await api('/learnings');
+  const categoryColors = {
+    entity_alias: 'bg-blue-100 text-blue-700',
+    entity_quirk: 'bg-amber-100 text-amber-700',
+    user_preference: 'bg-green-100 text-green-700',
+    pattern: 'bg-purple-100 text-purple-700',
+    note: 'bg-gray-100 text-gray-600',
+  };
+  const items = learnings.map(l => {
+    const color = categoryColors[l.category] || 'bg-gray-100 text-gray-600';
+    const ents = l.entityIds && l.entityIds.length
+      ? '<div class="text-xs text-gray-400 font-mono mt-1">' + l.entityIds.map(fmt.esc).join(' · ') + '</div>'
+      : '';
+    return \`
+      <div class="border-t border-gray-100 py-3 flex items-start justify-between gap-3">
+        <div class="flex-1">
+          <div class="flex items-center gap-2 mb-1">
+            <span class="px-2 py-0.5 rounded text-xs \${color}">\${l.category.replace(/_/g, ' ')}</span>
+            <span class="text-xs text-gray-400">\${fmt.ago(l.updatedAt)}</span>
+          </div>
+          <div class="text-sm text-gray-800">\${fmt.esc(l.text)}</div>
+          \${ents}
+        </div>
+        <button onclick="deleteLearning('\${l.id}')" class="text-xs text-gray-400 hover:text-red-600">delete</button>
+      </div>\`;
+  }).join('');
+
+  view.innerHTML = \`
+    <div class="card">
+      <div class="flex items-start justify-between mb-4">
+        <div>
+          <h2 class="text-lg font-semibold">Memory</h2>
+          <p class="text-sm text-gray-500 mt-1">Things the assistant has learned about your Home Assistant. Injected into every AI prompt so the assistant gets smarter about this specific install over time.</p>
+        </div>
+        <div class="flex gap-2">
+          <button onclick="addLearning()" class="bg-gray-100 px-3 py-1.5 rounded text-sm hover:bg-gray-200">+ Add</button>
+          \${learnings.length > 0 ? '<button onclick="clearLearnings()" class="text-xs text-gray-400 hover:text-red-600">clear all</button>' : ''}
+        </div>
+      </div>
+      \${learnings.length === 0
+        ? '<p class="text-sm text-gray-400 py-6 text-center">No learnings yet. The assistant will add them as it figures things out; you can also add them manually.</p>'
+        : items}
+    </div>\`;
+}
+
+async function addLearning() {
+  const text = prompt('What should the assistant remember about your Home Assistant?');
+  if (!text || !text.trim()) return;
+  try {
+    await api('/learnings', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text: text.trim() }),
+    });
+    renderLearnings();
+  } catch (e) {
+    alert('Error: ' + e.message);
+  }
+}
+
+async function deleteLearning(id) {
+  if (!confirm('Delete this learning?')) return;
+  await api('/learnings/' + id, { method: 'DELETE' });
+  renderLearnings();
+}
+
+async function clearLearnings() {
+  if (!confirm('Delete ALL learnings? The assistant will have to rediscover things.')) return;
+  await api('/learnings', { method: 'DELETE' });
+  renderLearnings();
 }
 
 // ─── CHAT ──────────────────────────────────────────────────
@@ -615,6 +693,7 @@ function route() {
   const hash = location.hash || '#/';
   if (hash.startsWith('#/flow/')) renderFlowDetail(hash.slice(7));
   else if (hash === '#/flows') renderFlowList();
+  else if (hash === '#/learnings') renderLearnings();
   else renderChat();
 }
 

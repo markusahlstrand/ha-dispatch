@@ -10,6 +10,8 @@
 
 import type { HAClient, HAState } from '../ha-client.js'
 import type { LLMProvider } from '../llm/index.js'
+import type { AppStore } from '../store.js'
+import { buildHAContext } from '../memory/prompt.js'
 
 export interface FlowSuggestion {
   id: string
@@ -45,11 +47,15 @@ function buildInventorySummary(states: HAState[]): string {
 export async function suggestFlowsLLM(
   ha: HAClient,
   llm: LLMProvider,
+  store?: AppStore,
 ): Promise<FlowSuggestion[]> {
   const states = await ha.getStates()
   const inventory = buildInventorySummary(states)
 
-  const system = `You are an expert Home Assistant automation designer. Given a user's entity inventory, propose 3-6 automation ideas that would clearly benefit them. Be specific: reference their actual devices. Prefer ideas that save money, improve comfort, or prevent problems. Skip generic ideas that don't use the user's specific hardware.`
+  const taskInstructions = `You are an expert Home Assistant automation designer. Given a user's entity inventory, propose 3-6 automation ideas that would clearly benefit them. Be specific: reference their actual devices. Prefer ideas that save money, improve comfort, or prevent problems. Skip generic ideas that don't use the user's specific hardware.`
+  const system = store
+    ? await buildHAContext({ store, taskInstructions })
+    : taskInstructions
 
   const prompt = `Here is the user's Home Assistant entity inventory (domain with entity counts and example entity IDs):
 

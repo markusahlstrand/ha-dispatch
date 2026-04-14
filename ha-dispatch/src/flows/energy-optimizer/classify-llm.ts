@@ -14,7 +14,9 @@
 
 import type { HAClient, HAState } from '../../ha-client.js'
 import type { LLMProvider } from '../../llm/index.js'
+import type { AppStore } from '../../store.js'
 import type { EnergyRole, Candidate } from './discover.js'
+import { buildHAContext } from '../../memory/prompt.js'
 
 const ROLE_DESCRIPTIONS: Record<EnergyRole, string> = {
   solar_power: 'Current instantaneous solar / PV production power, in W or kW. Prefer the inverter PV sensor over weather-based forecasts or daily totals.',
@@ -107,6 +109,7 @@ function compactState(s: HAState): Record<string, unknown> {
 export async function classifyEntitiesLLM(
   ha: HAClient,
   llm: LLMProvider,
+  store?: AppStore,
 ): Promise<{ candidates: Record<EnergyRole, LLMCandidate[]>; notes: string }> {
   const allStates = await ha.getStates()
   const candidates = prefilterEntities(allStates).map(compactState)
@@ -115,7 +118,10 @@ export async function classifyEntitiesLLM(
     .map((r) => `- ${r}: ${ROLE_DESCRIPTIONS[r]}`)
     .join('\n')
 
-  const system = `You are an expert in Home Assistant entity models and residential energy systems (solar inverters, home batteries, EVs, tariffs). You map HA entities to well-defined energy roles and explain your reasoning. You are conservative: if nothing clearly matches a role, return an empty candidates array for that role rather than guessing.`
+  const taskInstructions = `You are classifying Home Assistant entities into energy-system roles. You are conservative: if nothing clearly matches a role, return an empty candidates array for that role rather than guessing. Prefer entities whose current state is a real value over entities reporting 'unknown' or 'unavailable' — the latter are usually template/alias entities without feedback.`
+  const system = store
+    ? await buildHAContext({ store, taskInstructions })
+    : taskInstructions
 
   const prompt = `I have a Home Assistant installation. Below is a list of entities that are plausibly energy-related. Classify which entity best fills each of these roles. Return up to 3 candidates per role ordered by confidence (0-1). If the best match is still poor, include it but set a low confidence. It is OK for some roles to have zero candidates.
 
