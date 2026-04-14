@@ -27,9 +27,9 @@ Then install the **HA Dispatch** add-on from the store.
 ## Development
 
 ```bash
-cd ha-dispatch
 npm install
 npm run build
+npm run dev
 ```
 
 ## License
