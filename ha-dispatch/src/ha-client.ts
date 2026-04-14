@@ -61,7 +61,9 @@ export class HAClient {
   }
 
   async connect(): Promise<void> {
-    console.log(`[HA] Probing REST base ${this.baseUrl}/api/`)
+    console.log(
+      `[HA] Base=${this.baseUrl} tokenLen=${this.token.length} tokenPrefix=${this.token.slice(0, 6)}...`,
+    )
     await this.ping()
     console.log('[HA] Connected to Home Assistant')
     this.connected = true
@@ -82,8 +84,15 @@ export class HAClient {
   }
 
   private async ping(): Promise<void> {
-    const res = await this.fetch('/api/')
-    if (!res.ok) throw new Error(`HA ping failed: HTTP ${res.status}`)
+    // /api/config is a low-cost, well-defined endpoint: any authed caller
+    // can read it, and HA returns 200 with a small JSON payload.
+    const res = await this.fetch('/api/config')
+    if (!res.ok) {
+      const body = await res.text().catch(() => '')
+      throw new Error(
+        `HA ping failed: HTTP ${res.status} ${res.statusText} body=${body.slice(0, 120)}`,
+      )
+    }
   }
 
   private async fetch(path: string, init: RequestInit = {}): Promise<Response> {

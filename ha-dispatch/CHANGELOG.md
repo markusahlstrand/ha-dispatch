@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.1.8 — 2026-04-14
+
+- Debug logging for HA auth: print which *TOKEN / *HASS* / *SUPERVISOR*
+  env vars are set (and their lengths) plus baseUrl + token prefix so the
+  401 failure can be diagnosed.
+- Ping against /api/config (a reliably authed endpoint) instead of /api/,
+  and include HTTP status + body in the error.
+
 ## 0.1.7 — 2026-04-14
 
 - Switch HA client from WebSocket to REST (via Supervisor proxy). HA's
