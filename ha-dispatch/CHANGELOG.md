@@ -1,5 +1,33 @@
 # Changelog
 
+## 0.1.18 — 2026-04-14
+
+- Native flows. New `NativeFlow` type alongside `ManagedFlow`: instead
+  of running in Dispatch's runtime, a native flow generates a Home
+  Assistant automation YAML and POSTs it to /api/config/automation/
+  config/. HA owns triggers, traces, scheduling, history from then on.
+  Flows you can read or edit in HA's automation panel — and that
+  survive Dispatch being uninstalled.
+- New `src/ha/automation-writer.ts` adapter (upsert / remove / get /
+  reload). Names automations `dispatch_{flow_id}` so we can identify
+  ours; tags the description with `[dispatch_managed]` for safety.
+- New `motion-lights` flow: turn on lights when motion sensor goes on
+  (any binary_sensor — works with Unifi cameras, Aqara, PIR, etc.),
+  for N minutes (default 30), restart timer on re-trigger, optional
+  "only after sunset" condition. Mixed light/switch entity targets
+  supported.
+- `Flow` is now a discriminated union (`mode: 'managed' | 'native'`).
+  Type guards `isNativeFlow` / `isManagedFlow` for safe narrowing.
+- Flow runner gained `runNative` + `disableFlow`. Native runs record
+  the deployed entity_id under KV `native:{flowId}:entity_id`.
+- API: list + detail expose `mode`, `deployed`, `haEntityId`. New
+  POST /api/flows/:id/disable removes a deployed native automation.
+- UI: native flow cards show "Native HA" + "Deployed/Not deployed"
+  badges. Detail page swaps "Run now" for "Deploy/Update HA
+  automation" + "Remove from HA". Config form supports `entity` and
+  `entity[]` field types (textarea, one per line) and `boolean`
+  (checkbox).
+
 ## 0.1.17 — 2026-04-14
 
 - Diagnostics module. Captures key events (LLM calls with provider /

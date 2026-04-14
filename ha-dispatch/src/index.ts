@@ -148,6 +148,8 @@ function startScheduler(
     const now = new Date()
     for (const flow of listFlows()) {
       if (!enabled.has(flow.id)) continue
+      // Only managed flows have schedule triggers; native flows live in HA
+      if (flow.mode === 'native') continue
       for (const trigger of flow.triggers) {
         if (trigger.type !== 'schedule' || !trigger.cron) continue
         if (cronMatches(trigger.cron, now)) {

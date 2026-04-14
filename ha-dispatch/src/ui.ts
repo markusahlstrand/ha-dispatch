@@ -348,12 +348,22 @@ async function renderFlowList() {
     return;
   }
   const cards = flows.map(f => {
+    const modeChip = f.mode === 'native'
+      ? '<span class="px-2 py-0.5 rounded text-xs bg-indigo-100 text-indigo-700">Native HA</span>'
+      : '<span class="px-2 py-0.5 rounded text-xs bg-gray-100 text-gray-600">Managed</span>';
+    let stateChip;
+    if (f.mode === 'native') {
+      stateChip = f.deployed
+        ? '<span class="px-2 py-0.5 rounded text-xs bg-green-100 text-green-700">Deployed</span>'
+        : '<span class="px-2 py-0.5 rounded text-xs bg-yellow-100 text-yellow-700">Not deployed</span>';
+    } else {
+      stateChip = f.hasMapping
+        ? '<span class="px-2 py-0.5 rounded text-xs bg-green-100 text-green-700">Ready</span>'
+        : '<span class="px-2 py-0.5 rounded text-xs bg-yellow-100 text-yellow-700">Setup needed</span>';
+    }
     const last = f.lastRun
-      ? '<div class="text-xs text-gray-400 mt-1">Last run: ' + fmt.ago(f.lastRun.startedAt) + ' · ' + fmt.status(f.lastRun.status) + '</div>'
+      ? '<div class="text-xs text-gray-400 mt-1">Last action: ' + fmt.ago(f.lastRun.startedAt) + ' · ' + fmt.status(f.lastRun.status) + '</div>'
       : '<div class="text-xs text-gray-400 mt-1">Never run</div>';
-    const badge = f.hasMapping
-      ? '<span class="px-2 py-0.5 rounded text-xs bg-green-100 text-green-700">Ready</span>'
-      : '<span class="px-2 py-0.5 rounded text-xs bg-yellow-100 text-yellow-700">Setup needed</span>';
     return \`
       <div class="card cursor-pointer hover:shadow-md transition-shadow" onclick="location.hash='#/flow/\${f.id}'">
         <div class="flex items-start justify-between gap-3">
@@ -362,7 +372,7 @@ async function renderFlowList() {
             <p class="text-sm text-gray-500 mt-1">\${f.description}</p>
             \${last}
           </div>
-          \${badge}
+          <div class="flex flex-col items-end gap-1">\${stateChip}\${modeChip}</div>
         </div>
       </div>\`;
   }).join('');
@@ -395,31 +405,82 @@ async function renderFlowDetail(id) {
   setActiveTab('flows');
   view.innerHTML = '<div class="text-gray-400">Loading...</div>';
   const flow = await api('/flows/' + id);
-  const needsSetup = (flow.mapping ?? []).length === 0 && id === 'energy-optimizer';
+  const isNative = flow.mode === 'native';
+  const needsSetup = !isNative && (flow.mapping ?? []).length === 0 && id === 'energy-optimizer';
+
   const configFields = (flow.configSchema ?? []).map(f => {
     const val = (flow.config && flow.config[f.key] !== undefined) ? flow.config[f.key] : (f.default ?? '');
-    const input = f.type === 'number'
-      ? '<input type="number" name="' + f.key + '" value="' + val + '" class="mt-1 w-full rounded border-gray-300 border px-3 py-2" />'
-      : '<input type="text" name="' + f.key + '" value="' + val + '" class="mt-1 w-full rounded border-gray-300 border px-3 py-2" />';
-    return '<label class="block mb-3"><span class="text-sm font-medium">' + f.label + '</span>' + input + '</label>';
+    let input;
+    if (f.type === 'number') {
+      input = '<input type="number" name="' + f.key + '" value="' + fmt.esc(val) + '" data-type="number" class="mt-1 w-full rounded border-gray-300 border px-3 py-2 font-mono text-sm" />';
+    } else if (f.type === 'boolean') {
+      input = '<input type="checkbox" name="' + f.key + '" data-type="boolean" ' + (val ? 'checked' : '') + ' class="mt-1" />';
+    } else if (f.type === 'entity[]') {
+      const txt = Array.isArray(val) ? val.join('\\n') : fmt.esc(val);
+      const placeholder = 'one entity per line, e.g.\\nlight.driveway\\nlight.front_door';
+      input = '<textarea name="' + f.key + '" rows="3" data-type="entity[]" placeholder="' + placeholder + '" class="mt-1 w-full rounded border-gray-300 border px-3 py-2 font-mono text-xs">' + txt + '</textarea>';
+    } else if (f.type === 'entity') {
+      const dom = f.domain ? (Array.isArray(f.domain) ? f.domain.join('.* / ') + '.*' : f.domain + '.*') : 'entity_id';
+      input = '<input type="text" name="' + f.key + '" value="' + fmt.esc(val) + '" data-type="entity" placeholder="' + dom + '" class="mt-1 w-full rounded border-gray-300 border px-3 py-2 font-mono text-sm" />';
+    } else {
+      input = '<input type="text" name="' + f.key + '" value="' + fmt.esc(val) + '" class="mt-1 w-full rounded border-gray-300 border px-3 py-2" />';
+    }
+    const desc = f.description ? '<span class="block text-xs text-gray-400 mt-0.5">' + fmt.esc(f.description) + '</span>' : '';
+    return '<label class="block mb-3"><span class="text-sm font-medium text-gray-700">' + fmt.esc(f.label) + '</span>' + desc + input + '</label>';
   }).join('');
+
   const runs = (flow.lastRuns ?? []).map(r => \`
     <tr class="border-t border-gray-100">
       <td class="py-2 text-xs text-gray-500">\${fmt.time(r.startedAt)}</td>
       <td class="py-2">\${fmt.status(r.status)}</td>
       <td class="py-2 text-xs text-gray-600 truncate max-w-md">\${fmt.esc(r.summary ?? '')}</td>
     </tr>\`).join('');
+
+  // Action buttons
+  let actions = '';
+  if (isNative) {
+    const deployLabel = flow.deployed ? 'Update HA automation' : 'Deploy to HA';
+    actions = '<button onclick="runNow(\\'' + id + '\\')" class="bg-gray-900 text-white px-4 py-2 rounded text-sm hover:bg-gray-800">' + deployLabel + '</button>';
+    if (flow.deployed) {
+      actions += '<button onclick="disableNative(\\'' + id + '\\')" class="bg-red-50 text-red-700 px-4 py-2 rounded text-sm hover:bg-red-100">Remove from HA</button>';
+    }
+  } else {
+    actions = (needsSetup ? '<button onclick="startSetup(\\'' + id + '\\')" class="bg-blue-600 text-white px-4 py-2 rounded text-sm hover:bg-blue-700">Setup</button>' : '')
+      + '<button onclick="runNow(\\'' + id + '\\')" class="bg-gray-900 text-white px-4 py-2 rounded text-sm hover:bg-gray-800">Run now</button>';
+  }
+
+  // Native deployment details panel
+  let deploymentPanel = '';
+  if (isNative) {
+    const deployedRow = flow.deployed
+      ? '<div class="text-sm"><span class="text-gray-500">Deployed as: </span><span class="font-mono text-xs">' + fmt.esc(flow.haEntityId) + '</span></div>'
+        + '<div class="text-xs text-gray-400 mt-2">HA owns runtime — triggers, traces and history live in the HA automation panel.</div>'
+      : '<p class="text-sm text-gray-400">Not deployed yet. Save your config and click "Deploy to HA".</p>';
+    deploymentPanel = \`
+      <div class="card">
+        <h3 class="font-semibold mb-3">Home Assistant deployment</h3>
+        \${deployedRow}
+      </div>\`;
+  } else {
+    deploymentPanel = \`
+      <div class="card">
+        <h3 class="font-semibold mb-3">Entity mapping</h3>
+        \${(flow.mapping ?? []).length === 0 ? '<p class="text-sm text-gray-400">No mapping yet</p>' : '<ul class="text-sm space-y-1">' + flow.mapping.map(m => '<li class="flex justify-between"><span class="text-gray-500">' + m.role + '</span><span class="font-mono text-xs">' + m.entityId + '</span></li>').join('') + '</ul>'}
+      </div>\`;
+  }
+
+  const modeBadge = isNative
+    ? '<span class="ml-2 px-2 py-0.5 rounded text-xs bg-indigo-100 text-indigo-700 align-middle">Native HA</span>'
+    : '<span class="ml-2 px-2 py-0.5 rounded text-xs bg-gray-100 text-gray-600 align-middle">Managed</span>';
+
   view.innerHTML = \`
     <div class="mb-6"><a href="#/flows" class="text-sm text-blue-600 hover:underline">← All flows</a></div>
     <div class="flex items-start justify-between mb-6">
       <div>
-        <h2 class="text-xl font-bold">\${flow.name}</h2>
-        <p class="text-gray-500 text-sm mt-1">\${flow.description}</p>
+        <h2 class="text-xl font-bold">\${fmt.esc(flow.name)}\${modeBadge}</h2>
+        <p class="text-gray-500 text-sm mt-1">\${fmt.esc(flow.description)}</p>
       </div>
-      <div class="flex gap-2">
-        \${needsSetup ? '<button onclick="startSetup(\\'' + id + '\\')" class="bg-blue-600 text-white px-4 py-2 rounded text-sm hover:bg-blue-700">Setup</button>' : ''}
-        <button onclick="runNow('\${id}')" class="bg-gray-900 text-white px-4 py-2 rounded text-sm hover:bg-gray-800">Run now</button>
-      </div>
+      <div class="flex gap-2">\${actions}</div>
     </div>
     <div class="grid md:grid-cols-2 gap-4 mb-6">
       <div class="card">
@@ -429,10 +490,7 @@ async function renderFlowDetail(id) {
           \${configFields ? '<button class="mt-2 bg-gray-100 px-4 py-1.5 rounded text-sm hover:bg-gray-200">Save</button>' : ''}
         </form>
       </div>
-      <div class="card">
-        <h3 class="font-semibold mb-3">Entity mapping</h3>
-        \${(flow.mapping ?? []).length === 0 ? '<p class="text-sm text-gray-400">No mapping yet</p>' : '<ul class="text-sm space-y-1">' + flow.mapping.map(m => '<li class="flex justify-between"><span class="text-gray-500">' + m.role + '</span><span class="font-mono text-xs">' + m.entityId + '</span></li>').join('') + '</ul>'}
-      </div>
+      \${deploymentPanel}
     </div>
     <div class="card">
       <h3 class="font-semibold mb-3">Run history</h3>
@@ -446,7 +504,15 @@ async function saveConfig(ev, id) {
   const data = {};
   for (const el of form.elements) {
     if (!el.name) continue;
-    data[el.name] = el.type === 'number' ? Number(el.value) : el.value;
+    const t = el.dataset?.type ?? el.type;
+    if (t === 'number') data[el.name] = Number(el.value);
+    else if (t === 'boolean' || el.type === 'checkbox') data[el.name] = el.checked;
+    else if (t === 'entity[]') {
+      data[el.name] = String(el.value)
+        .split(/[\\n,]/)
+        .map(s => s.trim())
+        .filter(Boolean);
+    } else data[el.name] = el.value;
   }
   await api('/flows/' + id + '/config', {
     method: 'POST',
@@ -458,14 +524,23 @@ async function saveConfig(ev, id) {
 
 async function runNow(id) {
   const btn = event.target;
+  const original = btn.textContent;
   btn.disabled = true;
-  btn.textContent = 'Running...';
+  btn.textContent = 'Working...';
   try {
     const { result } = await api('/flows/' + id + '/run', { method: 'POST' });
     alert(result.status + ': ' + result.summary);
     renderFlowDetail(id);
   } catch (e) { alert('Error: ' + e.message); }
-  finally { btn.disabled = false; btn.textContent = 'Run now'; }
+  finally { btn.disabled = false; btn.textContent = original; }
+}
+
+async function disableNative(id) {
+  if (!confirm('Remove this automation from Home Assistant?')) return;
+  try {
+    await api('/flows/' + id + '/disable', { method: 'POST' });
+    renderFlowDetail(id);
+  } catch (e) { alert('Error: ' + e.message); }
 }
 
 async function startSetup(id) {

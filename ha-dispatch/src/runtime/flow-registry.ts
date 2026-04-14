@@ -8,6 +8,7 @@
 
 import type { Flow } from './types.js'
 import { energyOptimizerFlow } from '../flows/energy-optimizer/flow.js'
+import { motionLightsFlow } from '../flows/motion-lights/flow.js'
 
 const registry = new Map<string, Flow>()
 
@@ -29,3 +30,4 @@ export function listFlows(): Flow[] {
 // ─── Bundled flows ────────────────────────────────────────
 // Each new bundled flow gets registered here.
 registerFlow(energyOptimizerFlow)
+registerFlow(motionLightsFlow)

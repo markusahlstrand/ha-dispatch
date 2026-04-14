@@ -19,7 +19,8 @@ import type { Storage } from '../adapters/index.js'
 import type { LLMProvider } from '../llm/index.js'
 import type { Recorder } from '../diagnostics/recorder.js'
 import { listFlows, getFlow } from '../runtime/flow-registry.js'
-import { runFlow } from '../runtime/flow-runner.js'
+import { runFlow, disableFlow } from '../runtime/flow-runner.js'
+import { isNativeFlow } from '../runtime/types.js'
 import { classifyEntities } from '../flows/energy-optimizer/discover.js'
 import { classifyEntitiesLLM } from '../flows/energy-optimizer/classify-llm.js'
 
@@ -35,14 +36,21 @@ export function createFlowsRouter() {
       listFlows().map(async (f) => {
         const runs = await store.getFlowRuns(f.id, 1)
         const mapping = await store.getMapping(f.id)
+        const native = isNativeFlow(f)
+        const haEntityId = native
+          ? await store.kvGet<string>(`native:${f.id}:entity_id`)
+          : null
         return {
           id: f.id,
           name: f.name,
           description: f.description,
           icon: f.icon,
-          triggers: f.triggers,
+          mode: native ? 'native' : 'managed',
+          triggers: native ? [] : f.triggers,
           lastRun: runs[0] ?? null,
           hasMapping: mapping.length > 0,
+          deployed: Boolean(haEntityId),
+          haEntityId: haEntityId ?? null,
         }
       }),
     )
@@ -54,17 +62,39 @@ export function createFlowsRouter() {
     const flow = getFlow(c.req.param('id'))
     if (!flow) return c.json({ error: 'not_found' }, 404)
     const store = c.get('store') as AppStore
+    const native = isNativeFlow(flow)
+    const haEntityId = native
+      ? await store.kvGet<string>(`native:${flow.id}:entity_id`)
+      : null
     return c.json({
       id: flow.id,
       name: flow.name,
       description: flow.description,
       icon: flow.icon,
-      triggers: flow.triggers,
+      mode: native ? 'native' : 'managed',
+      triggers: native ? [] : flow.triggers,
       configSchema: flow.configSchema ?? [],
       config: await store.getFlowConfig(flow.id),
       mapping: await store.getMapping(flow.id),
       lastRuns: await store.getFlowRuns(flow.id, 10),
+      deployed: Boolean(haEntityId),
+      haEntityId: haEntityId ?? null,
     })
+  })
+
+  // Disable a (native) flow — removes it from HA. Managed flows: no-op.
+  app.post('/:id/disable', async (c) => {
+    const flow = getFlow(c.req.param('id'))
+    if (!flow) return c.json({ error: 'not_found' }, 404)
+    try {
+      await disableFlow(flow, {
+        ha: c.get('ha') as HAClient,
+        store: c.get('store') as AppStore,
+      })
+      return c.json({ ok: true })
+    } catch (e) {
+      return c.json({ error: (e as Error).message }, 500)
+    }
   })
 
   // Manual run

@@ -134,6 +134,15 @@ export class HAClient {
   }
 
   /**
+   * Authenticated request to an arbitrary HA REST path. Used by adapters
+   * that need to hit endpoints we don't wrap in this client (automation
+   * config, conversation API, etc.). Reuses our base URL and bearer token.
+   */
+  async request(path: string, init: RequestInit = {}): Promise<Response> {
+    return this.fetch(path, init)
+  }
+
+  /**
    * POST a state to HA — creates the entity on first call and updates it
    * thereafter. Used by the entity publisher to expose flow state as
    * first-class HA sensors / binary_sensors.
