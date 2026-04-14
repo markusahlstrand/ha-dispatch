@@ -21,12 +21,14 @@
 
 import type { HAClient } from '../ha-client.js'
 import type { AppStore } from '../store.js'
-import type { LLMProvider } from '../llm/index.js'
+import type { LLMProvider, ChatTurn } from '../llm/index.js'
 import type { Recorder } from '../diagnostics/recorder.js'
-import type { Message, Persona, InventorySummary } from './types.js'
+import type { Message, Persona, InventorySummary, ToolTraceEntry } from './types.js'
 import { getPersona, patchPersona, defaultPersona, buildSystemPrompt } from './persona.js'
 import { buildInventory } from './inventory.js'
 import { CAPABILITY_TEMPLATES, applicableTemplates } from './templates.js'
+import { createToolkit } from '../tools/types.js'
+import { haTools } from '../tools/ha-tools.js'
 
 const HISTORY_KEY = 'chat:history'
 const MAX_HISTORY = 50
@@ -216,6 +218,8 @@ async function handleOnboarding(_deps: AgentDeps, persona: Persona, userText: st
   )
 }
 
+const MAX_TOOL_ITERATIONS = 6
+
 async function handleFreeForm(deps: AgentDeps, persona: Persona, userText: string): Promise<Message> {
   if (!deps.llm) {
     return makeMessage(
@@ -224,29 +228,72 @@ async function handleFreeForm(deps: AgentDeps, persona: Persona, userText: strin
     )
   }
 
-  // Tight context: a slim inventory summary + recent chat history.
-  const inventory = await timedInventory(deps)
-  const inventorySummary = inventory.highlights.join('. ') + '.'
-  const history = await loadHistory(deps.store)
+  const toolkit = createToolkit(haTools)
+  const inventory = await timedInventory(deps).catch(() => null)
+  const inventoryHint = inventory
+    ? `Highlights: ${inventory.highlights.join('; ')}. ${inventory.totalEntities} entities total.`
+    : 'Could not read inventory right now — assume entities exist but call list_states to discover.'
 
-  const recent = history.slice(-10).map((m) => `${m.role.toUpperCase()}: ${m.content}`).join('\n')
+  const recent = (await loadHistory(deps.store)).slice(-8)
+  const turns: ChatTurn[] = recent.map((m) => ({
+    role: m.role === 'system' ? 'assistant' : (m.role as 'user' | 'assistant'),
+    content: m.content,
+  }))
+  turns.push({ role: 'user', content: userText })
 
-  const prompt = `Recent conversation:\n${recent}\n\nUser just said: ${userText}\n\nWhat the assistant can see in this Home Assistant: ${inventorySummary}\n\nReply naturally. If the user is asking you to do something, describe what you'd do (we'll add real tool execution next). Keep it short.`
+  const systemPrompt = `${buildSystemPrompt(persona)}
 
-  try {
-    const reply = await deps.llm.generateJson<{ reply: string }>({
-      system: buildSystemPrompt(persona),
-      prompt,
-      schema: {
-        type: 'object',
-        properties: { reply: { type: 'string' } },
-        required: ['reply'],
-      },
+You can call Home Assistant tools to inspect state and execute actions. Honesty rules:
+- Never claim an action succeeded unless the call_service result has \`verified: true\`.
+- If \`verified: false\`, tell the user the call did not produce the expected state and explain what you saw.
+- If \`verified\` is undefined for that service, say what you tried and that you couldn't auto-confirm.
+- Prefer reading state with list_states / get_state before acting if you're unsure which entity to use.
+- Keep responses short and concrete; quote the specific entity ids you acted on.
+
+About the user's setup: ${inventoryHint}`
+
+  const trace: ToolTraceEntry[] = []
+  let finalText = ''
+
+  for (let i = 0; i < MAX_TOOL_ITERATIONS; i++) {
+    let step
+    try {
+      step = await deps.llm.chatStep({
+        system: systemPrompt,
+        history: turns,
+        tools: toolkit.list(),
+        tag: 'chat.freeform',
+      })
+    } catch (e) {
+      finalText = `(LLM error: ${(e as Error).message})`
+      break
+    }
+
+    if (step.kind === 'message') {
+      finalText = step.content
+      break
+    }
+
+    // Tool call — execute, append to history, loop.
+    const startedAt = Date.now()
+    const result = await toolkit.call({ ha: deps.ha, store: deps.store, recorder: deps.recorder }, step.toolName, step.args)
+    trace.push({
+      toolName: step.toolName,
+      args: step.args,
+      result: result.ok ? result.data : { error: result.error },
+      ok: result.ok,
+      verified: result.ok ? result.verified : undefined,
+      verificationNote: result.ok ? result.verificationNote : undefined,
+      durationMs: Date.now() - startedAt,
     })
-    return makeMessage('assistant', reply.reply)
-  } catch (e) {
-    return makeMessage('assistant', `(LLM error: ${(e as Error).message})`)
+    turns.push({ role: 'tool', toolName: step.toolName, result: result.ok ? result.data : { error: result.error } })
   }
+
+  if (!finalText) {
+    finalText = `(Reached max tool iterations without a final answer. Use the ⬇ report button to share details.)`
+  }
+
+  return makeMessage('assistant', finalText, trace.length > 0 ? [{ kind: 'tool_trace', data: trace }] : undefined)
 }
 
 async function suggestForInterests(

@@ -192,6 +192,31 @@ function renderAttachment(att) {
         \${hi ? '<ul class="text-sm text-gray-700 list-disc ml-5">' + hi + '</ul>' : ''}
       </div>\`;
     document.getElementById('chat-scroll').appendChild(wrap);
+  } else if (att.kind === 'tool_trace') {
+    const rows = att.data.map(t => {
+      const verifBadge = t.ok && t.verified === true
+        ? '<span class="px-1.5 py-0.5 rounded text-xs bg-green-100 text-green-700">verified</span>'
+        : t.ok && t.verified === false
+          ? '<span class="px-1.5 py-0.5 rounded text-xs bg-red-100 text-red-700">unverified</span>'
+          : !t.ok
+            ? '<span class="px-1.5 py-0.5 rounded text-xs bg-red-100 text-red-700">error</span>'
+            : '<span class="px-1.5 py-0.5 rounded text-xs bg-gray-100 text-gray-600">unchecked</span>';
+      const argsStr = JSON.stringify(t.args);
+      const note = t.verificationNote ? '<div class="text-xs text-gray-500 mt-1">' + fmt.esc(t.verificationNote) + '</div>' : '';
+      return '<div class="text-xs py-1.5 border-t border-gray-100 first:border-t-0">'
+        + '<div class="flex items-center gap-2">'
+        + '<span class="font-mono text-gray-700">' + fmt.esc(t.toolName) + '</span>'
+        + '<span class="text-gray-400">' + t.durationMs + 'ms</span>'
+        + verifBadge
+        + '</div>'
+        + '<div class="font-mono text-gray-400 text-xs mt-0.5 truncate">' + fmt.esc(argsStr) + '</div>'
+        + note
+        + '</div>';
+    }).join('');
+    wrap.innerHTML = '<details class="self-start max-w-full w-full"><summary class="text-xs text-gray-400 cursor-pointer hover:text-gray-700 mt-1 mb-1">'
+      + att.data.length + ' tool call' + (att.data.length === 1 ? '' : 's') + '</summary>'
+      + '<div class="bg-gray-50 border border-gray-200 rounded-lg p-3">' + rows + '</div></details>';
+    document.getElementById('chat-scroll').appendChild(wrap);
   } else if (att.kind === 'capability_picker') {
     const tpls = att.data.templates;
     const cards = tpls.map(t => \`

@@ -19,6 +19,17 @@ export type ChatAttachment =
   | { kind: 'capability_picker'; data: { templates: CapabilityTemplate[] } }
   | { kind: 'persona_form' }
   | { kind: 'flow_suggestion'; data: { id: string; name: string; description: string; templateId: string } }
+  | { kind: 'tool_trace'; data: ToolTraceEntry[] }
+
+export interface ToolTraceEntry {
+  toolName: string
+  args: Record<string, unknown>
+  result: unknown
+  ok: boolean
+  verified?: boolean
+  verificationNote?: string
+  durationMs: number
+}
 
 export interface Persona {
   /** Whatever the user asks to be called */

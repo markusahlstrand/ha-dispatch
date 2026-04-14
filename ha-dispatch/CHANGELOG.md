@@ -1,5 +1,32 @@
 # Changelog
 
+## 0.1.19 — 2026-04-14
+
+- Chat tool execution. The free-form chat assistant can now actually
+  call Home Assistant — and is no longer allowed to claim it did
+  things it didn't.
+- New tool framework under `src/tools/`:
+    list_states({domain?, limit?})  — discover entities
+    get_state({entity_id})          — read one entity in detail
+    list_areas()                    — enumerate HA areas
+    call_service({domain, service, entity_id?, data?}) — execute + verify
+- Service-call verification: after `call_service`, the verifier polls
+  the affected entity for up to ~6s and checks the new state matches
+  the expected outcome (light.turn_on→on, cover.open_cover→open via
+  opening, lock.lock→locked, etc.). The tool result includes
+  `verified: true | false | undefined` so the LLM can be honest.
+- LLM provider gained `chatStep()` for multi-step tool-calling loops.
+  Gemini implementation uses Google's `functionDeclarations` /
+  `functionCall` API and a `function`-role turn for tool responses.
+- Chat agent refactored: instead of single-shot `generateJson`, it
+  runs up to 6 tool-call iterations per user turn. Each tool call is
+  recorded to the diagnostic buffer and surfaced in the message as a
+  collapsible "N tool calls" tray (entity ids, args, latency, verified
+  badge, verification note).
+- System prompt enforces honesty: the model must NOT claim success
+  unless a tool call returned `verified: true`. If verification failed
+  or wasn't possible, it has to say so.
+
 ## 0.1.18 — 2026-04-14
 
 - Native flows. New `NativeFlow` type alongside `ManagedFlow`: instead

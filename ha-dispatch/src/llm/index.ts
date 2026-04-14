@@ -24,5 +24,5 @@ export function createLLM(config: RuntimeConfig): LLMProvider | null {
   }
 }
 
-export type { LLMProvider } from './types.js'
+export type { LLMProvider, ChatTurn, ToolSpec, LLMStep } from './types.js'
 export { LLMUnavailableError } from './types.js'
