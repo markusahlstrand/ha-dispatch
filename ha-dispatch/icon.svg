@@ -1,0 +1,46 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#18BCF2"/>
+      <stop offset="1" stop-color="#6366F1"/>
+    </linearGradient>
+    <linearGradient id="bolt" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FFFFFF"/>
+      <stop offset="1" stop-color="#E0F2FE"/>
+    </linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur in="SourceAlpha" stdDeviation="2"/>
+      <feOffset dx="0" dy="2" result="offsetblur"/>
+      <feComponentTransfer>
+        <feFuncA type="linear" slope="0.3"/>
+      </feComponentTransfer>
+      <feMerge>
+        <feMergeNode/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+
+  <!-- Rounded square background -->
+  <rect x="0" y="0" width="128" height="128" rx="28" fill="url(#bg)"/>
+
+  <!-- Flow nodes (connected dots behind the bolt) -->
+  <g opacity="0.35" fill="#FFFFFF">
+    <circle cx="28" cy="40" r="4"/>
+    <circle cx="28" cy="88" r="4"/>
+    <circle cx="100" cy="40" r="4"/>
+    <circle cx="100" cy="88" r="4"/>
+    <line x1="28" y1="40" x2="100" y2="40" stroke="#FFFFFF" stroke-width="1.5"/>
+    <line x1="28" y1="88" x2="100" y2="88" stroke="#FFFFFF" stroke-width="1.5"/>
+    <line x1="28" y1="40" x2="28" y2="88" stroke="#FFFFFF" stroke-width="1.5"/>
+    <line x1="100" y1="40" x2="100" y2="88" stroke="#FFFFFF" stroke-width="1.5"/>
+  </g>
+
+  <!-- Lightning bolt — the centrepiece -->
+  <path d="M 72 20 L 42 70 L 58 70 L 50 108 L 86 56 L 68 56 L 78 20 Z"
+        fill="url(#bolt)"
+        stroke="#FFFFFF"
+        stroke-width="1"
+        stroke-linejoin="round"
+        filter="url(#shadow)"/>
+</svg>

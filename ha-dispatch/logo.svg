@@ -1,0 +1,39 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 200" width="600" height="200">
+  <defs>
+    <linearGradient id="bg2" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#18BCF2"/>
+      <stop offset="1" stop-color="#6366F1"/>
+    </linearGradient>
+    <linearGradient id="bolt2" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FFFFFF"/>
+      <stop offset="1" stop-color="#E0F2FE"/>
+    </linearGradient>
+    <linearGradient id="text" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#18BCF2"/>
+      <stop offset="1" stop-color="#6366F1"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Icon on the left (128x128, vertically centered in 200 tall canvas) -->
+  <g transform="translate(20, 36)">
+    <rect x="0" y="0" width="128" height="128" rx="28" fill="url(#bg2)"/>
+    <g opacity="0.35" fill="#FFFFFF" stroke="#FFFFFF" stroke-width="1.5">
+      <circle cx="28" cy="40" r="4" stroke="none"/>
+      <circle cx="28" cy="88" r="4" stroke="none"/>
+      <circle cx="100" cy="40" r="4" stroke="none"/>
+      <circle cx="100" cy="88" r="4" stroke="none"/>
+      <line x1="28" y1="40" x2="100" y2="40"/>
+      <line x1="28" y1="88" x2="100" y2="88"/>
+      <line x1="28" y1="40" x2="28" y2="88"/>
+      <line x1="100" y1="40" x2="100" y2="88"/>
+    </g>
+    <path d="M 72 20 L 42 70 L 58 70 L 50 108 L 86 56 L 68 56 L 78 20 Z"
+          fill="url(#bolt2)" stroke="#FFFFFF" stroke-width="1" stroke-linejoin="round"/>
+  </g>
+
+  <!-- Wordmark -->
+  <text x="175" y="110" font-family="Poppins" font-size="60" font-weight="700"
+        fill="url(#text)" letter-spacing="-1">HA Dispatch</text>
+  <text x="178" y="142" font-family="Lato" font-size="20" font-weight="500"
+        fill="#6B7280" letter-spacing="0.5">Durable automation for Home Assistant</text>
+</svg>
