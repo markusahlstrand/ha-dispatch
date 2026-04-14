@@ -24,13 +24,9 @@ async function start() {
   const db = await createDatabase(join(config.dataDir, 'ha-dispatch.db'))
   console.log(`[ha-dispatch] Database ready at ${config.dataDir}/ha-dispatch.db`)
 
-  // HA client — log which auth env vars are present (values redacted)
-  // so we can diagnose token-passing issues in the Supervisor container.
-  const authEnv = Object.keys(process.env)
-    .filter((k) => /TOKEN|HASS|SUPERVISOR/i.test(k))
-    .map((k) => `${k}=${(process.env[k] ?? '').length}ch`)
-    .join(' ')
-  console.log(`[ha-dispatch] auth env: ${authEnv || '(none found)'}`)
+  // Dump ALL env var keys so we can see exactly what the Supervisor
+  // injects into our container (values omitted).
+  console.log(`[ha-dispatch] env keys: ${Object.keys(process.env).sort().join(' ')}`)
 
   const ha = new HAClient(
     config.hassUrl,

@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.1.9 — 2026-04-14
+
+- Supervisor was not injecting SUPERVISOR_TOKEN into our container
+  (verified by dumping env keys — nothing matched). Add
+  `hassio_role: manager` and `auth_api: true` which some Supervisor
+  versions require before injecting the token, and log the full env
+  key list so we can verify what made it through.
+
 ## 0.1.8 — 2026-04-14
 
 - Debug logging for HA auth: print which *TOKEN / *HASS* / *SUPERVISOR*
