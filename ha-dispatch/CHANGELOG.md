@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.3 — 2026-04-14
+
+- Move `NODE_ENV=production` to runtime only. When set before
+  `npm install`, npm implicitly becomes `--omit=dev`, so esbuild and
+  typescript were skipped and `node build.js` failed with
+  ERR_MODULE_NOT_FOUND.
+
 ## 0.1.2 — 2026-04-14
 
 - Use official HA base images (ghcr.io/home-assistant/{arch}-base) and
