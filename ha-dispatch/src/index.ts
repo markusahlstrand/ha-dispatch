@@ -13,6 +13,7 @@ import { HAClient } from './ha-client.js'
 import { createLocalStorage, type Storage } from './adapters/index.js'
 import { createAppStore, type AppStore } from './store.js'
 import { createFlowsRouter } from './api/flows.js'
+import { createChatRouter } from './api/chat.js'
 import { listFlows } from './runtime/flow-registry.js'
 import { runFlow } from './runtime/flow-runner.js'
 import { createLLM } from './llm/index.js'
@@ -71,6 +72,9 @@ async function start() {
 
   // Flows router
   app.route('/api/flows', createFlowsRouter())
+
+  // Chat router (persona, onboarding, conversational surface)
+  app.route('/api/chat', createChatRouter())
 
   // LLM-powered flow suggestions (based on the user's entity inventory)
   app.post('/api/suggestions', async (c) => {

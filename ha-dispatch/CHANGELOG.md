@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.1.16 — 2026-04-14
+
+- Chat is now the default landing. New `src/chat/` module with persona,
+  inventory builder, capability templates, onboarding state machine and
+  free-form chat agent. Storage goes through AppStore.kv so personas
+  survive restarts and persist alongside everything else.
+- Onboarding flow: assistant greets and asks for names → builds a live
+  inventory of HA entities/automations/areas → asks the user which
+  capability templates interest them (lights, energy, security, water,
+  climate, notifications) → if Gemini is configured, generates 4-6
+  tailored automation ideas based on the actual hardware.
+- Free-form chat after onboarding routes through Gemini with the
+  persona's system prompt + a tight inventory summary + recent history.
+  Tools (real action execution) come in 0.1.17.
+- New endpoints: GET/POST /api/chat, POST /api/chat/action,
+  DELETE /api/chat, GET /api/chat/inventory.
+- Flows view moved to a second tab (#/flows). Existing functionality
+  unchanged.
+
 ## 0.1.15 — 2026-04-14
 
 - HA entity publishing. Flows can return `publish: PublishSpec[]` from
