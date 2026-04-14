@@ -31,6 +31,7 @@ import { CAPABILITY_TEMPLATES, applicableTemplates } from './templates.js'
 import { createToolkit } from '../tools/types.js'
 import { haTools } from '../tools/ha-tools.js'
 import { automationTools } from '../tools/automation-tools.js'
+import { shellyTools } from '../tools/shelly-tools.js'
 import { buildHAContext } from '../memory/prompt.js'
 
 const HISTORY_KEY = 'chat:history'
@@ -236,7 +237,7 @@ async function handleFreeForm(deps: AgentDeps, persona: Persona, userText: strin
     )
   }
 
-  const toolkit = createToolkit([...haTools, ...automationTools])
+  const toolkit = createToolkit([...haTools, ...automationTools, ...shellyTools])
   const inventory = await timedInventory(deps).catch(() => null)
   const inventoryHint = inventory
     ? `Highlights: ${inventory.highlights.join('; ')}. ${inventory.totalEntities} entities total.`
@@ -268,6 +269,8 @@ When reading list_states, prefer entities whose state is a real value (on/off/op
 When you discover something the user or future turns should remember — an entity alias that maps to a physical device, an entity whose verification fails because it's a template/alias, a preferred way to control a device, a user preference — call record_learning so it sticks. Be specific; cite entity ids.
 
 Keep user-facing responses short and concrete; quote the specific entity ids you acted on.
+
+You can also reach Shelly Gen2+ devices directly over the LAN (bypassing HA) via the shelly_* tools: shelly_add to register a device by IP, shelly_info / shelly_status / shelly_call for state and control, and shelly_install_script / shelly_list_scripts / shelly_remove_script to deploy mJS scripts on the device. Use this when the user wants behavior running on the Shelly itself — e.g. "send a webhook when power spikes above X" — where an HA automation would be slower or less reliable. Prefer bundled templates (power_threshold_webhook, cycle_finish_webhook) over writing raw mJS. Name Dispatch-managed scripts with a "dispatch_" prefix. If you don't have the device's IP in shelly_list, ask the user for it once and call shelly_add.
 
 About the user's setup: ${inventoryHint}`
 

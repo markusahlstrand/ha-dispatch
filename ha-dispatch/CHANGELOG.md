@@ -1,5 +1,43 @@
 # Changelog
 
+## 0.1.22 — 2026-04-14
+
+- Shelly adapter (Phase 1). Dispatch can now talk to Shelly Gen2+
+  devices directly — not just through Home Assistant — and generate
+  Shelly Scripts on the fly. This unlocks multi-system orchestration
+  via chat: e.g. "notify me when the laundry machine finishes" ends up
+  as a Shelly Script running on the device that posts a webhook to HA.
+
+- New `src/adapters/shelly/`:
+    client.ts    — Gen2+ RPC client with HTTP digest auth, chunked
+                   Script.PutCode, and an installScript convenience
+                   that creates-or-updates + starts in one call.
+    scripts.ts   — Bundled mJS templates:
+                     power_threshold_webhook — post to a webhook when
+                       apower crosses a threshold (with cooldown +
+                       hysteresis).
+                     cycle_finish_webhook    — detect laundry/
+                       dishwasher end-of-cycle via run→idle+debounce.
+    types.ts     — ShellyDeviceInfo, ShellyScriptEntry, KnownShelly.
+    index.ts     — facade export.
+
+- New `src/tools/shelly-tools.ts` exposes 8 tools:
+    shelly_add              register a device by IP (probes, stores).
+    shelly_list             enumerate known devices.
+    shelly_info             device info (model, firmware, auth_en).
+    shelly_status           full status snapshot.
+    shelly_call             raw RPC passthrough (advanced).
+    shelly_list_scripts     scripts on a device.
+    shelly_install_script   template- or raw-mJS-driven install+start.
+    shelly_remove_script    stop + delete by name or numeric id.
+  Known devices persist under KV `shelly:device:<id>` plus a
+  `shelly:index` array; scripts managed by Dispatch are named with the
+  `dispatch_` prefix so they are identifiable.
+
+- Chat system prompt teaches the model when to reach for Shelly (when
+  behavior should live on the device itself), to prefer templates over
+  raw mJS, and to ask for an IP if shelly_list is empty.
+
 ## 0.1.21 — 2026-04-14
 
 - Chat can now actually create Home Assistant automations. Previously
