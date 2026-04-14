@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.5 — 2026-04-14
+
+- Fix HA WebSocket URL: pass origin only so ha-client's `/api/websocket`
+  suffix isn't appended to an already-complete path. Previous value
+  produced `ws://supervisor/core/websocket/api/websocket` (404).
+
 ## 0.1.4 — 2026-04-14
 
 - Fix dashboard API calls to use relative URLs so HA Ingress path prefix
