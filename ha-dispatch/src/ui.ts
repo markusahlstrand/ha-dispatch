@@ -68,8 +68,15 @@ const fmt = {
   },
 };
 
+// Relative-URL base so HA Ingress path prefix (e.g. /api/hassio_ingress/TOKEN/)
+// is honored. Absolute URLs like '/api/...' would escape ingress and hit HA itself.
+const API_BASE = (() => {
+  const p = window.location.pathname;
+  return (p.endsWith('/') ? p : p + '/') + 'api';
+})();
+
 async function api(path, opts) {
-  const res = await fetch('/api' + path, opts);
+  const res = await fetch(API_BASE + path, opts);
   if (!res.ok) throw new Error('API ' + path + ' failed: ' + res.status);
   return res.json();
 }

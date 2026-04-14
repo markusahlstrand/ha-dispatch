@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.4 — 2026-04-14
+
+- Fix dashboard API calls to use relative URLs so HA Ingress path prefix
+  is respected. Previously absolute `/api/...` paths escaped ingress and
+  hit Home Assistant's own API, causing "API unreachable" in the panel.
+
 ## 0.1.3 — 2026-04-14
 
 - Move `NODE_ENV=production` to runtime only. When set before
