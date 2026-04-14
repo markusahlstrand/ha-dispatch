@@ -14,11 +14,14 @@
 import { Hono } from 'hono'
 import type { HAClient } from '../ha-client.js'
 import type { Database } from '../db.js'
+import type { LLMProvider } from '../llm/index.js'
 import { listFlows, getFlow } from '../runtime/flow-registry.js'
 import { runFlow } from '../runtime/flow-runner.js'
 import { classifyEntities } from '../flows/energy-optimizer/discover.js'
+import { classifyEntitiesLLM } from '../flows/energy-optimizer/classify-llm.js'
+import { suggestFlowsLLM } from '../runtime/suggest-flows.js'
 
-type Deps = { ha: HAClient; db: Database }
+type Deps = { ha: HAClient; db: Database; llm: LLMProvider | null }
 
 export function createFlowsRouter() {
   const app = new Hono<{ Variables: Deps }>()
@@ -108,15 +111,26 @@ export function createFlowsRouter() {
   })
 
   // Discovery (currently only for energy-optimizer — flows can
-  // register their own discovery in Phase 2)
+  // register their own discovery in Phase 2).
+  // Uses the LLM when an API key is configured; falls back to regex
+  // heuristics otherwise.
   app.post('/:id/discover', async (c) => {
     const id = c.req.param('id')
     if (id !== 'energy-optimizer') {
       return c.json({ error: 'discovery not supported for this flow' }, 400)
     }
     const ha = c.get('ha') as HAClient
+    const llm = c.get('llm') as LLMProvider | null
+    if (llm) {
+      try {
+        const { candidates, notes } = await classifyEntitiesLLM(ha, llm)
+        return c.json({ candidates, notes, source: 'llm' })
+      } catch (e) {
+        console.warn('[discover] LLM classification failed; falling back:', (e as Error).message)
+      }
+    }
     const candidates = await classifyEntities(ha)
-    return c.json({ candidates })
+    return c.json({ candidates, source: 'heuristics' })
   })
 
   return app

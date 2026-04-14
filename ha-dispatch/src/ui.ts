@@ -130,7 +130,9 @@ async function renderFlowList() {
     \`;
   }).join('');
 
-  view.innerHTML = '<div class="grid md:grid-cols-2 gap-4">' + cards + '</div>';
+  view.innerHTML = '<div class="grid md:grid-cols-2 gap-4">' + cards + '</div>'
+    + '<div id="suggestions"></div>';
+  loadSuggestions();
 }
 
 async function renderFlowDetail(id) {
@@ -226,26 +228,67 @@ async function runNow(id) {
 }
 
 async function startSetup(id) {
-  view.innerHTML = '<div class="card"><h3 class="font-semibold mb-3">Scanning Home Assistant...</h3><div class="text-sm text-gray-500">Looking for energy devices</div></div>';
-  const { candidates } = await api('/flows/' + id + '/discover', { method: 'POST' });
+  view.innerHTML = '<div class="card"><h3 class="font-semibold mb-3">Analyzing your Home Assistant setup...</h3><div class="text-sm text-gray-500">Looking for energy devices (this takes a few seconds when an LLM is configured)</div></div>';
+  const { candidates, notes, source } = await api('/flows/' + id + '/discover', { method: 'POST' });
 
   const rows = Object.entries(candidates).map(([role, opts]) => {
     const top = opts[0];
     const label = role.replace(/_/g, ' ');
-    if (!top) return '<tr><td class="py-2 text-gray-500">' + label + '</td><td class="text-sm text-gray-400">not found</td><td></td></tr>';
-    return '<tr class="border-t border-gray-100"><td class="py-2 text-gray-500 text-sm">' + label + '</td><td class="py-2 font-mono text-xs">' + top.entityId + '</td><td class="py-2 text-xs text-gray-400">' + Math.round(top.confidence*100) + '%</td></tr>';
+    if (!top) return '<tr class="border-t border-gray-100"><td class="py-2 text-gray-500 text-sm">' + label + '</td><td class="text-sm text-gray-400">not found</td><td></td><td></td></tr>';
+    const rationale = top.rationale ? '<div class="text-xs text-gray-500 mt-1">' + top.rationale + '</div>' : '';
+    return '<tr class="border-t border-gray-100 align-top">'
+      + '<td class="py-2 text-gray-600 text-sm font-medium">' + label + '</td>'
+      + '<td class="py-2 font-mono text-xs">' + top.entityId + rationale + '</td>'
+      + '<td class="py-2 text-xs text-gray-400 whitespace-nowrap">' + Math.round(top.confidence*100) + '%</td>'
+      + '</tr>';
   }).join('');
+
+  const badge = source === 'llm'
+    ? '<span class="ml-2 px-2 py-0.5 rounded text-xs bg-purple-100 text-purple-700">AI-analyzed</span>'
+    : '<span class="ml-2 px-2 py-0.5 rounded text-xs bg-gray-100 text-gray-600">heuristics</span>';
+
+  const notesBlock = notes
+    ? '<div class="bg-blue-50 border border-blue-100 rounded p-3 text-sm text-blue-900 mb-4">' + notes + '</div>'
+    : '';
 
   view.innerHTML = \`
     <div class="mb-6">
       <a href="#/flow/\${id}" class="text-sm text-blue-600 hover:underline">← Back</a>
     </div>
     <div class="card">
-      <h3 class="font-semibold mb-3">Found these devices</h3>
+      <h3 class="font-semibold mb-3">Entity mapping\${badge}</h3>
+      \${notesBlock}
       <table class="w-full mb-4">\${rows}</table>
       <button onclick="confirmMapping('\${id}', \${JSON.stringify(candidates).replace(/"/g,'&quot;')})" class="bg-green-600 text-white px-4 py-2 rounded text-sm hover:bg-green-700">Confirm & enable</button>
     </div>
   \`;
+}
+
+async function loadSuggestions() {
+  const container = document.getElementById('suggestions');
+  if (!container) return;
+  try {
+    const { suggestions } = await api('/suggestions', { method: 'POST' });
+    if (!suggestions || suggestions.length === 0) {
+      container.innerHTML = '';
+      return;
+    }
+    const cards = suggestions.map((s) => {
+      const complexityColor = s.complexity === 'low' ? 'text-green-600' : s.complexity === 'medium' ? 'text-yellow-600' : 'text-red-600';
+      return '<div class="card">'
+        + '<h4 class="font-semibold text-gray-900">' + s.name + '</h4>'
+        + '<p class="text-sm text-gray-600 mt-1">' + s.description + '</p>'
+        + '<p class="text-xs text-gray-500 mt-2 italic">' + s.rationale + '</p>'
+        + '<div class="text-xs text-gray-400 mt-3">Needs: ' + (s.needs || []).join(' · ') + '</div>'
+        + '<div class="text-xs mt-2"><span class="text-gray-500">Value:</span> ' + s.value + ' · <span class="' + complexityColor + '">' + s.complexity + ' complexity</span></div>'
+        + '</div>';
+    }).join('');
+    container.innerHTML = '<h3 class="text-sm font-semibold text-gray-500 mt-8 mb-3 uppercase tracking-wide">Suggested flows</h3>'
+      + '<div class="grid md:grid-cols-2 gap-4">' + cards + '</div>';
+  } catch (e) {
+    // LLM disabled or errored — keep the section empty silently
+    container.innerHTML = '';
+  }
 }
 
 async function confirmMapping(id, candidates) {

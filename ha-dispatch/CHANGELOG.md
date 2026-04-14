@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.1.13 — 2026-04-14
+
+- LLM-first entity discovery. When `llm_api_key` is set, the energy
+  optimizer's setup wizard sends a filtered entity inventory to
+  Gemini Flash and asks for a structured mapping with per-entity
+  rationale. Falls back to the regex heuristics when no key is set or
+  the call fails. Mapping UI now shows the AI's rationale for each pick.
+- New `POST /api/suggestions` endpoint: LLM scans the full entity
+  inventory and proposes 3-6 automation flows tailored to what's
+  actually installed. The flow list renders them as cards.
+- Pluggable `LLMProvider` abstraction in `src/llm/` (Gemini first;
+  OpenAI/Anthropic as TODOs behind the same interface).
+
 ## 0.1.12 — 2026-04-14
 
 - Tighten energy-optimizer entity discovery heuristics after cross-check

@@ -14,6 +14,8 @@ import { createDatabase } from './db.js'
 import { createFlowsRouter } from './api/flows.js'
 import { listFlows, getFlow } from './runtime/flow-registry.js'
 import { runFlow } from './runtime/flow-runner.js'
+import { createLLM } from './llm/index.js'
+import { suggestFlowsLLM } from './runtime/suggest-flows.js'
 import { dashboardHtml } from './ui.js'
 
 async function start() {
@@ -35,12 +37,19 @@ async function start() {
     config.supervisorToken ?? process.env.HASS_TOKEN ?? '',
   )
 
+  // LLM provider (null when llm_provider=none or no API key)
+  const llm = createLLM(config)
+  console.log(
+    `[ha-dispatch] LLM: ${llm ? `${llm.id} enabled` : `disabled (provider=${config.llm_provider}, key=${config.llm_api_key ? 'set' : 'missing'})`}`,
+  )
+
   // Hono app
   const app = new Hono()
 
   app.use('*', async (c, next) => {
     c.set('ha' as never, ha)
     c.set('db' as never, db)
+    c.set('llm' as never, llm)
     await next()
   })
 
@@ -57,6 +66,17 @@ async function start() {
 
   // Flows router
   app.route('/api/flows', createFlowsRouter())
+
+  // LLM-powered flow suggestions (based on the user's entity inventory)
+  app.post('/api/suggestions', async (c) => {
+    if (!llm) return c.json({ error: 'llm_disabled', suggestions: [] }, 400)
+    try {
+      const suggestions = await suggestFlowsLLM(ha, llm)
+      return c.json({ suggestions })
+    } catch (e) {
+      return c.json({ error: (e as Error).message, suggestions: [] }, 500)
+    }
+  })
 
   // Dashboard shell (all non-API routes)
   app.get('*', (c) => c.html(dashboardHtml()))
