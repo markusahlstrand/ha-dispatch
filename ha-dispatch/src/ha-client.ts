@@ -133,6 +133,23 @@ export class HAClient {
     return (await res.json()) as HAConfig
   }
 
+  /**
+   * POST a state to HA — creates the entity on first call and updates it
+   * thereafter. Used by the entity publisher to expose flow state as
+   * first-class HA sensors / binary_sensors.
+   */
+  async postState(
+    entityId: string,
+    state: string,
+    attributes: Record<string, unknown> = {},
+  ): Promise<void> {
+    const res = await this.fetch(`/api/states/${encodeURIComponent(entityId)}`, {
+      method: 'POST',
+      body: JSON.stringify({ state, attributes }),
+    })
+    if (!res.ok) throw new Error(`postState ${entityId} failed: HTTP ${res.status}`)
+  }
+
   async callService(call: HAServiceCall): Promise<unknown> {
     const body: Record<string, unknown> = { ...(call.service_data ?? {}) }
     if (call.target?.entity_id) {

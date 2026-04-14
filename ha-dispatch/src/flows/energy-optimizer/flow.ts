@@ -115,10 +115,61 @@ async function run(ctx: FlowContext): Promise<FlowResult> {
   // (The user will approve actuation in Phase 2 via a dry-run → enable toggle)
   await store.kvSet('energy-optimizer:latest-plan', plan)
 
+  const startAction = plan.actions.find((a) => a.kind === 'start_charger')
+  const startIso = startAction ? new Date(startAction.at).toISOString() : null
+
   return {
     status: 'success',
     summary: plan.reasoning,
     data: plan,
+    publish: [
+      {
+        key: 'estimated_savings',
+        name: 'Energy Optimizer Estimated Savings',
+        state: Number(savings.toFixed(2)),
+        unit: 'EUR',
+        deviceClass: 'monetary',
+        stateClass: 'measurement',
+        icon: 'mdi:cash',
+      },
+      {
+        key: 'next_action',
+        name: 'Energy Optimizer Next Action',
+        state:
+          startAction
+            ? `Charge from ${new Date(startAction.at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
+            : 'idle',
+        icon: 'mdi:car-electric',
+      },
+      {
+        key: 'next_charge_start',
+        name: 'Energy Optimizer Next Charge Start',
+        state: startIso ?? 'unknown',
+        deviceClass: 'timestamp',
+        icon: 'mdi:clock-start',
+      },
+      {
+        key: 'cheapest_window_price',
+        name: 'Energy Optimizer Cheapest Window Price',
+        state: Number(avgPrice.toFixed(4)),
+        unit: 'EUR/kWh',
+        stateClass: 'measurement',
+        icon: 'mdi:lightning-bolt',
+      },
+      {
+        key: 'reasoning',
+        name: 'Energy Optimizer Plan',
+        state: plan.reasoning.slice(0, 250),
+        icon: 'mdi:brain',
+        attributes: {
+          full_reasoning: plan.reasoning,
+          kwh_needed: Number(kwhNeeded.toFixed(2)),
+          hours_needed: hoursNeeded,
+          ev_soc_now: evState,
+          ev_target_soc: targetSoc,
+        },
+      },
+    ],
   }
 }
 

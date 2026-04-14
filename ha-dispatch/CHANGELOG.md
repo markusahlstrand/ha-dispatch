@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.1.15 — 2026-04-14
+
+- HA entity publishing. Flows can return `publish: PublishSpec[]` from
+  their result and the runner POSTs each spec to /api/states/ — they
+  appear as first-class HA sensors named `sensor.dispatch_{flow}_{key}`
+  with proper device_class / unit / state_class so they integrate with
+  the energy dashboard, voice assistants, and Lovelace cards.
+- Energy Optimizer now publishes:
+    sensor.dispatch_energy_optimizer_estimated_savings   (EUR)
+    sensor.dispatch_energy_optimizer_next_action         (text)
+    sensor.dispatch_energy_optimizer_next_charge_start   (timestamp)
+    sensor.dispatch_energy_optimizer_cheapest_window_price (EUR/kWh)
+    sensor.dispatch_energy_optimizer_reasoning           (text + attrs)
+- New `src/ha/entity-publisher.ts` — narrow public API behind which the
+  REST POST lives. Adapter pattern stays clean; flows never touch HTTP.
+
 ## 0.1.14 — 2026-04-14
 
 - Storage adapter refactor. Split the old `Database` interface into three

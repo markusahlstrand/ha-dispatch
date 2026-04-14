@@ -45,6 +45,12 @@ export interface FlowResult {
   status: 'success' | 'error' | 'noop'
   summary: string
   data?: unknown
+  /**
+   * Optional list of HA entity states to publish after the run. The
+   * runner will POST each spec to /api/states so they appear as first
+   * class HA sensors. Naming: sensor.dispatch_{flow_id}_{key}.
+   */
+  publish?: import('../ha/entity-publisher.js').PublishSpec[]
 }
 
 export interface Flow {

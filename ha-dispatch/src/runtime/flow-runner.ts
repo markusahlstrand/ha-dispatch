@@ -14,6 +14,7 @@ import type { Flow, FlowContext, FlowResult } from './types.js'
 import type { HAClient } from '../ha-client.js'
 import type { AppStore } from '../store.js'
 import type { Storage } from '../adapters/index.js'
+import { createEntityPublisher } from '../ha/entity-publisher.js'
 
 export interface RunOptions {
   ha: HAClient
@@ -69,6 +70,15 @@ export async function runFlow(flow: Flow, opts: RunOptions): Promise<FlowResult>
     summary: result.summary,
     data: result.data,
   })
+
+  // Publish any HA entities the flow asked for. Best-effort; failures
+  // here don't fail the flow run.
+  if (result.publish && result.publish.length > 0 && result.status !== 'error') {
+    const publisher = createEntityPublisher(opts.ha)
+    publisher.publish(flow.id, result.publish).catch((e) => {
+      console.warn(`[flow:${flow.id}] entity publish failed:`, (e as Error).message)
+    })
+  }
 
   return result
 }
