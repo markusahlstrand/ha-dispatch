@@ -1,0 +1,9 @@
+build_from:
+  aarch64: node:20-alpine
+  amd64: node:20-alpine
+  armv7: node:20-alpine
+labels:
+  org.opencontainers.image.title: HA Dispatch
+  org.opencontainers.image.description: Durable, AI-native automation runtime for Home Assistant
+  org.opencontainers.image.source: https://github.com/markusahlstrand/ha-dispatch
+  org.opencontainers.image.licenses: MIT

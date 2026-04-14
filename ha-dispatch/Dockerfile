@@ -1,27 +1,25 @@
-ARG BUILD_FROM=ghcr.io/hassio-addons/base-nodejs:latest
+ARG BUILD_FROM=node:20-alpine
 FROM $BUILD_FROM
 
-ENV LANG=C.UTF-8
+ENV LANG=C.UTF-8 \
+    NODE_ENV=production
 
 WORKDIR /app
 
-# Copy package manifests first for caching
+# Copy package manifests first for layer caching
 COPY package.json package-lock.json* ./
 
-RUN npm install --omit=dev --no-audit --no-fund \
-  && npm install esbuild typescript tsx @types/node --no-save --no-audit --no-fund
+# Install runtime + build deps (we'll prune build deps after the bundle)
+RUN npm install --no-audit --no-fund
 
-# Copy source
+# Copy source and build the bundle
 COPY tsconfig.json build.js ./
 COPY src ./src
-
-# Build the bundle
 RUN node build.js
 
-# Prune dev tooling
+# Drop dev dependencies; sql.js is a runtime dep so it stays
 RUN npm prune --omit=dev
 
-# HA Ingress exposes this port
 EXPOSE 8099
 
 CMD ["node", "dist/index.js"]
