@@ -1,18 +1,14 @@
 /**
- * Home Assistant WebSocket API client.
+ * Home Assistant client.
  *
- * Connects to HA via the Supervisor API (when running as an add-on)
- * or directly via the HA WebSocket endpoint (for local dev).
+ * Uses the HA REST API via the Supervisor proxy. The Supervisor rewrites
+ * the request with an internal admin token, so our SUPERVISOR_TOKEN (which
+ * HA does NOT accept directly on WebSocket) works reliably for REST.
  *
- * Provides methods to:
- * - Get all entity states
- * - Get a single entity state
- * - Call a service (e.g., switch.turn_on, number.set_value)
- * - Subscribe to state changes
- * - Get HA configuration (timezone, location, etc.)
+ * Phase 1 needs: get states, get single state, call service, health check.
+ * State-change subscriptions are polled via getStates() in the flow runner.
+ * We can reintroduce a WebSocket layer later for event-driven flows.
  */
-
-import WebSocket from 'ws'
 
 export interface HAState {
   entity_id: string
@@ -39,194 +35,151 @@ export interface HAServiceCall {
   service_data?: Record<string, unknown>
 }
 
-type StateChangeCallback = (entityId: string, newState: HAState, oldState: HAState) => void
+type StateChangeCallback = (entityId: string, newState: HAState, oldState: HAState | null) => void
 
 export class HAClient {
-  private ws: WebSocket | null = null
-  private msgId = 0
-  private pending = new Map<number, { resolve: (v: unknown) => void; reject: (e: Error) => void }>()
-  private stateListeners: StateChangeCallback[] = []
-  private hassUrl: string
+  private baseUrl: string
   private token: string
   private connected = false
-  private reconnectTimer: ReturnType<typeof setTimeout> | null = null
+  private healthTimer: ReturnType<typeof setInterval> | null = null
+  private pollTimer: ReturnType<typeof setInterval> | null = null
+  private lastStates = new Map<string, HAState>()
+  private stateListeners: StateChangeCallback[] = []
 
-  constructor(hassUrl: string, token: string) {
-    this.hassUrl = hassUrl
+  /**
+   * @param baseUrl Either an HA REST base (e.g. http://hass:8123) or a
+   *   Supervisor-proxied base (http://supervisor/core). A trailing "/api"
+   *   is accepted and normalized away.
+   */
+  constructor(baseUrl: string, token: string) {
+    this.baseUrl = baseUrl
+      .replace(/^ws(s?):/, 'http$1:')
+      .replace(/\/+$/, '')
+      .replace(/\/websocket$/, '')
+      .replace(/\/api$/, '')
     this.token = token
   }
 
   async connect(): Promise<void> {
-    return new Promise((resolve, reject) => {
-      // hassUrl must already point at the WebSocket endpoint (addon mode:
-      // ws://supervisor/core/websocket, direct mode: ws://host:8123/api/websocket).
-      // Only normalize the scheme so http(s):// is accepted.
-      const wsUrl = this.hassUrl.replace(/^http/, 'ws')
-
-      console.log(`[HA] Connecting to ${wsUrl}`)
-      this.ws = new WebSocket(wsUrl)
-
-      this.ws.on('message', (data) => {
-        const msg = JSON.parse(data.toString())
-        this.handleMessage(msg, resolve)
+    console.log(`[HA] Probing REST base ${this.baseUrl}/api/`)
+    await this.ping()
+    console.log('[HA] Connected to Home Assistant')
+    this.connected = true
+    // Periodic health check so the dashboard "Connected" indicator is accurate.
+    this.healthTimer = setInterval(() => {
+      this.ping().catch(() => {
+        if (this.connected) {
+          console.log('[HA] Health check failed; marking disconnected')
+          this.connected = false
+        }
+      }).then(() => {
+        if (!this.connected) {
+          console.log('[HA] Health check recovered')
+          this.connected = true
+        }
       })
-
-      this.ws.on('error', (err) => {
-        console.error('[HA] WebSocket error:', err.message)
-        if (!this.connected) reject(err)
-      })
-
-      this.ws.on('close', () => {
-        console.log('[HA] WebSocket closed')
-        this.connected = false
-        this.scheduleReconnect()
-      })
-    })
+    }, 30_000)
   }
 
-  private handleMessage(msg: Record<string, unknown>, onConnect?: (v: void) => void) {
-    switch (msg.type) {
-      case 'auth_required':
-        this.ws?.send(JSON.stringify({ type: 'auth', access_token: this.token }))
-        break
+  private async ping(): Promise<void> {
+    const res = await this.fetch('/api/')
+    if (!res.ok) throw new Error(`HA ping failed: HTTP ${res.status}`)
+  }
 
-      case 'auth_ok':
-        console.log('[HA] Authenticated successfully')
-        this.connected = true
-        onConnect?.()
-        break
+  private async fetch(path: string, init: RequestInit = {}): Promise<Response> {
+    const headers = new Headers(init.headers)
+    headers.set('Authorization', `Bearer ${this.token}`)
+    if (init.body && !headers.has('Content-Type')) {
+      headers.set('Content-Type', 'application/json')
+    }
+    return fetch(this.baseUrl + path, { ...init, headers })
+  }
 
-      case 'auth_invalid':
-        console.error('[HA] Authentication failed:', msg.message)
-        break
+  async getStates(): Promise<HAState[]> {
+    const res = await this.fetch('/api/states')
+    if (!res.ok) throw new Error(`getStates failed: HTTP ${res.status}`)
+    return (await res.json()) as HAState[]
+  }
 
-      case 'result': {
-        const id = msg.id as number
-        const pending = this.pending.get(id)
-        if (pending) {
-          this.pending.delete(id)
-          if (msg.success) {
-            pending.resolve(msg.result)
-          } else {
-            pending.reject(new Error(String((msg.error as Record<string, unknown>)?.message ?? 'Unknown error')))
-          }
-        }
-        break
-      }
+  async getState(entityId: string): Promise<HAState | null> {
+    const res = await this.fetch(`/api/states/${encodeURIComponent(entityId)}`)
+    if (res.status === 404) return null
+    if (!res.ok) throw new Error(`getState failed: HTTP ${res.status}`)
+    return (await res.json()) as HAState
+  }
 
-      case 'event': {
-        const event = msg.event as Record<string, unknown>
-        if ((event?.event_type ?? (event as Record<string, unknown>)?.type) === 'state_changed') {
-          const data = (event.data ?? event) as Record<string, unknown>
-          const entityId = data.entity_id as string
-          const newState = data.new_state as HAState
-          const oldState = data.old_state as HAState
-          if (entityId && newState) {
-            for (const listener of this.stateListeners) {
+  async getEntityValues(entityIds: string[]): Promise<Record<string, string>> {
+    const states = await this.getStates()
+    const result: Record<string, string> = {}
+    const byId = new Map(states.map((s) => [s.entity_id, s]))
+    for (const id of entityIds) {
+      result[id] = byId.get(id)?.state ?? 'unavailable'
+    }
+    return result
+  }
+
+  async getConfig(): Promise<HAConfig> {
+    const res = await this.fetch('/api/config')
+    if (!res.ok) throw new Error(`getConfig failed: HTTP ${res.status}`)
+    return (await res.json()) as HAConfig
+  }
+
+  async callService(call: HAServiceCall): Promise<unknown> {
+    const body: Record<string, unknown> = { ...(call.service_data ?? {}) }
+    if (call.target?.entity_id) {
+      body.entity_id = call.target.entity_id
+    }
+    const res = await this.fetch(`/api/services/${call.domain}/${call.service}`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    })
+    if (!res.ok) throw new Error(`callService failed: HTTP ${res.status}`)
+    return res.json()
+  }
+
+  /**
+   * Polling-based state-change subscription. Calls the listener whenever
+   * an entity's state changes. Simple but sufficient for Phase 1 flows
+   * that only care about slow-changing state.
+   */
+  async onStateChange(callback: StateChangeCallback, intervalMs = 10_000): Promise<void> {
+    this.stateListeners.push(callback)
+    if (this.pollTimer) return
+
+    // Prime the cache
+    for (const s of await this.getStates()) this.lastStates.set(s.entity_id, s)
+
+    this.pollTimer = setInterval(async () => {
+      try {
+        const current = await this.getStates()
+        for (const s of current) {
+          const prev = this.lastStates.get(s.entity_id) ?? null
+          if (!prev || prev.state !== s.state || prev.last_updated !== s.last_updated) {
+            this.lastStates.set(s.entity_id, s)
+            for (const l of this.stateListeners) {
               try {
-                listener(entityId, newState, oldState)
+                l(s.entity_id, s, prev)
               } catch (e) {
                 console.error('[HA] State listener error:', e)
               }
             }
           }
         }
-        break
-      }
-    }
-  }
-
-  private scheduleReconnect() {
-    if (this.reconnectTimer) return
-    console.log('[HA] Reconnecting in 5s...')
-    this.reconnectTimer = setTimeout(async () => {
-      this.reconnectTimer = null
-      try {
-        await this.connect()
-        // Re-subscribe to state changes if we had listeners
-        if (this.stateListeners.length > 0) {
-          await this.send({ type: 'subscribe_events', event_type: 'state_changed' })
-        }
       } catch (e) {
-        console.error('[HA] Reconnect failed:', e)
-        this.scheduleReconnect()
+        // swallow; health check will flip connected
       }
-    }, 5000)
+    }, intervalMs)
   }
 
-  private send(msg: Record<string, unknown>): Promise<unknown> {
-    const id = ++this.msgId
-    return new Promise((resolve, reject) => {
-      this.pending.set(id, { resolve, reject })
-      this.ws?.send(JSON.stringify({ ...msg, id }))
-
-      // Timeout after 10s
-      setTimeout(() => {
-        if (this.pending.has(id)) {
-          this.pending.delete(id)
-          reject(new Error(`HA request ${id} timed out`))
-        }
-      }, 10_000)
-    })
-  }
-
-  /** Get all entity states */
-  async getStates(): Promise<HAState[]> {
-    return (await this.send({ type: 'get_states' })) as HAState[]
-  }
-
-  /** Get a single entity state */
-  async getState(entityId: string): Promise<HAState | null> {
-    const states = await this.getStates()
-    return states.find((s) => s.entity_id === entityId) ?? null
-  }
-
-  /** Get multiple entity states at once */
-  async getEntityValues(entityIds: string[]): Promise<Record<string, string>> {
-    const states = await this.getStates()
-    const result: Record<string, string> = {}
-    for (const id of entityIds) {
-      const state = states.find((s) => s.entity_id === id)
-      result[id] = state?.state ?? 'unavailable'
-    }
-    return result
-  }
-
-  /** Get HA configuration (timezone, location, etc.) */
-  async getConfig(): Promise<HAConfig> {
-    return (await this.send({ type: 'get_config' })) as HAConfig
-  }
-
-  /** Call a Home Assistant service */
-  async callService(call: HAServiceCall): Promise<unknown> {
-    return this.send({
-      type: 'call_service',
-      domain: call.domain,
-      service: call.service,
-      target: call.target,
-      service_data: call.service_data,
-    })
-  }
-
-  /** Subscribe to state changes */
-  async onStateChange(callback: StateChangeCallback): Promise<void> {
-    if (this.stateListeners.length === 0) {
-      // First listener — subscribe to events
-      await this.send({ type: 'subscribe_events', event_type: 'state_changed' })
-    }
-    this.stateListeners.push(callback)
-  }
-
-  /** Check if connected */
   isConnected(): boolean {
     return this.connected
   }
 
-  /** Disconnect */
   disconnect() {
-    if (this.reconnectTimer) clearTimeout(this.reconnectTimer)
-    this.ws?.close()
-    this.ws = null
+    if (this.healthTimer) clearInterval(this.healthTimer)
+    if (this.pollTimer) clearInterval(this.pollTimer)
+    this.healthTimer = null
+    this.pollTimer = null
     this.connected = false
   }
 }

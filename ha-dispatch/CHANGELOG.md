@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.1.7 — 2026-04-14
+
+- Switch HA client from WebSocket to REST (via Supervisor proxy). HA's
+  WebSocket auth rejected the add-on's SUPERVISOR_TOKEN with "Invalid
+  access", but REST via /core/api/* accepts it (the Supervisor rewrites
+  the request with its own admin token). Keeps the same public surface
+  (getStates, getState, callService, onStateChange); state-change events
+  are now polled every 10s which is plenty for slow-moving energy state.
+
 ## 0.1.6 — 2026-04-14
 
 - Stop appending '/api/websocket' inside ha-client. Via the Supervisor
